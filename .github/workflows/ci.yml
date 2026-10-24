@@ -34,3 +34,24 @@ jobs:
               ls -l "/tmp/brain_${os}_${arch}"
             done
           done
+
+  # 真实网关 e2e 冒烟（TODO.md 第 5 节；secret 未配置时自动跳过）
+  e2e:
+    runs-on: ubuntu-latest
+    if: github.repository == 'icheer/brain-cli'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Real gateway smoke
+        env:
+          BRAIN_BASE_URL: ${{ secrets.BRAIN_E2E_BASE_URL }}
+          BRAIN_API_KEY: ${{ secrets.BRAIN_E2E_API_KEY }}
+          BRAIN_E2E_MODEL: ${{ secrets.BRAIN_E2E_MODEL }}
+        if: ${{ env.BRAIN_BASE_URL != '' && env.BRAIN_API_KEY != '' && env.BRAIN_E2E_MODEL != '' }}
+        run: |
+          go build -o /tmp/brain .
+          : > /tmp/empty-config.yaml   # 空配置文件：凭据走环境变量
+          BRAIN_CONFIG=/tmp/empty-config.yaml /tmp/brain ping
+          BRAIN_CONFIG=/tmp/empty-config.yaml /tmp/brain ask -m "$BRAIN_E2E_MODEL" --timeout 90 "只回复两个字:成功"

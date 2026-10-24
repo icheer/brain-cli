@@ -86,7 +86,7 @@ aliases:
 
 ### 2.4 配置管理命令与密钥安全
 - [x] `brain config path | get <key> | set <key> <value> | list | edit`
-- [ ] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）
+- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）
 - [x] 密钥读取顺序：环境变量 > config.yaml；文件权限非 0600 时 stderr 警告
 - [x] 不提供 `--api-key` flag（避免进入 shell history / `ps` 输出；一次性使用走环境变量）
 
@@ -114,8 +114,8 @@ aliases:
 - [x] **stdout**：只输出模型正文文本；默认等传输完成后一次性打印
 - [x] **stderr**：警告、耗时、心跳（`waiting for model… 45s | ~1.2k chars`，每 15s）、fallback 切换与重试提示
 - [x] `--json`：结构化输出（content、thinking、实际使用模型、requested_model、usage、latency_ms、finish_reason、error）
-- [ ] `--show-thinking`：推理模型思维链走 **stderr**，stdout 仍只有正文；`--json` 中两个字段并存
-- [ ] `--stream`（M2）：token 增量打印到 stdout，供人类交互使用
+- [x] `--show-thinking`：推理模型思维链走 **stderr**（带标头；`--stream` 时同步增量），stdout 仍只有正文；`--json` 中两个字段并存
+- [x] `--stream`：token 增量打印到 stdout，供人类交互使用；**与 `--json` 互斥**；正文一旦开始输出即禁用重试与故障转移（第 0 节铁律，中途断流保留半截正文并按原错误码退出）
 - [x] 换行约定：正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`
 - [x] stdout 单一写点：全程序只允许一处代码写 stdout，配 golden test 逐字节守护
 - [x] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空，code 与退出码一致），退出码照旧，Agent 可无条件 jq 解析
@@ -152,7 +152,7 @@ aliases:
 - [x] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 6 目标交叉构建冒烟（真实网关 e2e 待配 repo secret 后补）
 - [x] `--version`：ldflags 注入 git tag / commit
 - [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）
-- [ ] 可选：Homebrew tap；`go install` 作为开发者备选
+- [ ] 可选：Homebrew tap（需先建 `icheer/homebrew-tap` 仓库，goreleaser 加 brew 配置即可）；`go install` 作为开发者备选
 - [x] SKILL.md 随仓库分发（`skills/brain/SKILL.md`），README 说明如何链接/复制进 `.claude/skills/` 或 `.agents/skills/`
 
 ## 6. 配套 Agent Skill（SKILL.md）设计
@@ -171,7 +171,9 @@ aliases:
   - 状态（2026-10-24）：**功能完成**，单测全绿，真实网关 e2e 通过（SSE 问答 / 心跳 15s×7 / `--json` 含真实 usage+thinking / 真实故障转移 503→model_not_found 即时切换 / ping 三项自检）；分发流水线就绪（goreleaser + CI + install.sh），待首个 tag 验证
   - 真实网关经验：错误可能以 503+model_not_found 或 HTTP 200 流内 `data:{"error"}` 出现，均已按第 0 节分类处理
 - **M2**：`--stream`、`--show-thinking`、`brain init` 交互引导、Homebrew tap
+  - 状态（2026-10-24）：**前三项完成**（单测全绿 + 真实网关 e2e：流式增量/思维链 stderr 分流/init 向导含环境变量回落）；Homebrew 需先建 tap 仓库，暂缓
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
+  - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 
 ## 8. 开放问题
 1. **网关密钥发放**：若网关目前只有一把共享 key，公开分发前需先支持按用户发 key（网关侧配套工作，需确认可行性与时间点）

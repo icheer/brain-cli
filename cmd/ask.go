@@ -29,6 +29,8 @@ type askOptions struct {
 	timeout       int
 	maxInputBytes int64
 	jsonOut       bool
+	stream        bool
+	showThinking  bool
 }
 
 var askOpts askOptions
@@ -55,6 +57,8 @@ func init() {
 	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0, "整体超时秒数（含重试与故障转移，覆盖 config）")
 	askCmd.Flags().Int64Var(&askOpts.maxInputBytes, "max-input-bytes", 0, "输入文本上限字节数（覆盖 config）")
 	askCmd.Flags().BoolVar(&askOpts.jsonOut, "json", false, "单行 JSON 输出（成败恒定一个对象，含 usage/latency/error）")
+	askCmd.Flags().BoolVar(&askOpts.stream, "stream", false, "正文增量打印到 stdout（人类交互用；开始输出后禁用重试与故障转移）")
+	askCmd.Flags().BoolVar(&askOpts.showThinking, "show-thinking", false, "思维链走 stderr，stdout 仍只有正文（--stream 时思维链同步增量）")
 }
 
 // heartbeatInterval 心跳间隔（TODO.md 3.2：长推理时的 stderr 进度提示）。
@@ -79,6 +83,11 @@ type askJSONError struct {
 
 func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+	// --stream 是人类交互模式，--json 是机器解析模式，二者互斥
+	if askOpts.stream && askOpts.jsonOut {
+		return exitcode.Fail(stderr, exitcode.Usage, "--stream 与 --json 互斥")
+	}
 
 	// --json：无论成败（含配置/输入错误），stdout 恒定输出一个 JSON 对象
 	payload := askJSON{}
@@ -219,9 +228,29 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		Stderr:   stderr,
 		RetryMax: cfg.RetryMax,
 	}
+
+	// --stream：正文增量直写 stdout（人类交互），一旦写出即禁止重试/切换；
+	// --show-thinking 配合时思维链同步增量到 stderr。
+	streamed := false
+	var onDelta gateway.DeltaHandler
+	if askOpts.stream {
+		onDelta = func(content, reasoning string) {
+			if reasoning != "" && askOpts.showThinking {
+				fmt.Fprint(stderr, reasoning)
+			}
+			if content != "" {
+				fmt.Fprint(stdout, content)
+				streamed = true
+			}
+		}
+	} else {
+		onDelta = func(content, reasoning string) { gotChars.Add(int64(len(content) + len(reasoning))) }
+	}
+	engine.HasOutput = func() bool { return streamed }
+
 	res, used, err := engine.Ask(ctx, chain,
 		func(m string) gateway.ChatRequest { return gateway.ChatRequest{Model: m, Messages: messages} },
-		func(content, reasoning string) { gotChars.Add(int64(len(content) + len(reasoning))) })
+		onDelta)
 	hbStop()
 
 	if err != nil {
@@ -257,10 +286,23 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		fmt.Fprintf(stderr, "brain: 警告: 模型返回空内容（finish_reason=%s%s）\n", res.FinishReason, note)
 	}
 
-	// 全程序唯一的 stdout 正文写点（TODO.md 3.2「stdout 单一写点」），
-	// 换行约定：正文末尾保证恰好一个 \n；--json 模式走 defer 的 JSON 写点。
-	if !askOpts.jsonOut && res.Content != "" {
-		fmt.Fprint(stdout, ensureSingleNewline(res.Content))
+	// 输出阶段：正文/JSON 两个互斥写点，全程序仅此一处写 stdout（TODO.md 3.2）
+	switch {
+	case askOpts.stream:
+		// 增量已写出，只补齐换行约定
+		if streamed && !strings.HasSuffix(res.Content, "\n") {
+			fmt.Fprint(stdout, "\n")
+		}
+	case askOpts.jsonOut:
+		// 由函数开头的 defer 输出单对象
+	default:
+		if askOpts.showThinking && res.Thinking != "" {
+			fmt.Fprintf(stderr, "brain: —— 思维链（~%s 字符）——\n%s\n",
+				humanCount(int64(len(res.Thinking))), res.Thinking)
+		}
+		if res.Content != "" {
+			fmt.Fprint(stdout, ensureSingleNewline(res.Content))
+		}
 	}
 	fallbackNote := ""
 	if used != chain[0] {

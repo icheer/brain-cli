@@ -22,11 +22,13 @@ const (
 
 // AskEngine 在别名 fallback 链上执行「重试 + 故障转移」（TODO.md 3.4 与第 0 节已定范围）。
 // 已定范围：连接失败/超时/429/5xx/404 可切换；401/403 不切；
-// stdout 等完成才输出，任何时点失败都不会污染已输出内容。
+// stdout 等完成才输出，任何时点失败都不会污染已输出内容——但 --stream 模式例外，
+// 通过 HasOutput 感知「正文已写出到 stdout」，此后禁止重试与切换（已输出正文永不切）。
 type AskEngine struct {
-	Client   *gateway.Client
-	Stderr   io.Writer
-	RetryMax int // 同一模型最大重试次数（不含首次）
+	Client    *gateway.Client
+	Stderr    io.Writer
+	RetryMax  int         // 同一模型最大重试次数（不含首次）
+	HasOutput func() bool // --stream 场景：返回 true 表示已有正文写到 stdout
 }
 
 // Ask 依次尝试链上模型，返回结果与实际使用的模型。
@@ -46,6 +48,11 @@ func (e *AskEngine) Ask(ctx context.Context, chain []string,
 				return res, model, nil
 			}
 			lastErr = err
+
+			// 正文已流出到 stdout：接受失败，禁止重试与切换（第 0 节铁律）
+			if e.HasOutput != nil && e.HasOutput() {
+				return nil, model, err
+			}
 
 			switch actionFor(ctx, err) {
 			case actionFatal:

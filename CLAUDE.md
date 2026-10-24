@@ -7,7 +7,7 @@
 ## 开发上下文入口
 
 - **先读 [TODO.md](TODO.md) 第 0 节「已定决策」**——两轮设计评审敲定的结论，不要重新讨论已定项
-- 当前状态：**M1 功能完成**（SSE/心跳/fallback/--json/重试/ping；待真实 Agent 会话验收），下一步 M2（`--stream` / `--show-thinking` / `brain init` / Homebrew）；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
+- 当前状态：**v0.1.0 已发布**（6 平台产物 + install.sh 验证通过），M2 代码完成（`--stream`/`--show-thinking`/`brain init`；Homebrew 待建 tap 仓库）；遗留：CI 真实网关 e2e 的 repo secrets（BRAIN_E2E_BASE_URL / BRAIN_E2E_API_KEY / BRAIN_E2E_MODEL）；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
 - 架构、配置文件格式、退出码表、超时重试策略等规范全部在 TODO.md 内，以它为准
 
 ## 铁律

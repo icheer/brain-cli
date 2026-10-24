@@ -218,3 +218,34 @@ func TestEngineBackoffRespectsDeadline(t *testing.T) {
 		t.Fatalf("退避等待不应超出预算，实际 %v", time.Since(start))
 	}
 }
+
+// --stream 铁律：正文已写出到 stdout 后，中途断流不得重试或切换模型。
+func TestEngineNoFallbackAfterOutput(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		fl, _ := w.(http.Flusher)
+		fmtSSE(w, `{"choices":[{"delta":{"content":"半截"}}]}`)
+		fl.Flush()
+		// 直接掐断 TCP：制造中途断流
+		if hj, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hj.Hijack(); err == nil {
+				_ = conn.Close()
+			}
+		}
+	}))
+	defer srv.Close()
+
+	e := &AskEngine{
+		Client: gateway.New(srv.URL, "k", 5*time.Second), Stderr: &strings.Builder{}, RetryMax: 5,
+		HasOutput: func() bool { return true }, // 模拟 --stream 已写出正文
+	}
+	_, _, err := e.Ask(context.Background(), []string{"p", "s"},
+		func(m string) gateway.ChatRequest { return gateway.ChatRequest{Model: m} }, nil)
+	if err == nil {
+		t.Fatal("断流应返回错误")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("已输出正文后不得重试/切换（应仅 1 次调用），实际 %d", calls.Load())
+	}
+}

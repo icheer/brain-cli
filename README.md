@@ -35,10 +35,10 @@ brain ask -m fast "用一句话介绍你自己"
 
 ## 状态与路线
 
-**:construction: M1 完成，M2 进行中**——里程碑与验收状态见 [TODO.md](TODO.md) 第 7 节。
+**:rocket: v0.1.0 已发布**（M0+M1+M2）——里程碑与验收状态见 [TODO.md](TODO.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
 | M0 (MVP) | 配置体系 + `ask`（参数/stdin/`-f`/`-i`/`-s`）+ 别名解析 + 退出码 + `brain models` | ✅ 完成 |
 | M1 | SSE 传输 + 心跳 + fallback/重试 + `--json` + `brain ping` + 分发流水线 | ✅ 完成 |
-| M2 | `--stream` / `--show-thinking` / `brain init` 交互引导 / Homebrew | 🔜 进行中 |
+| M2 | `--stream` / `--show-thinking` / `brain init` | ✅ 完成（Homebrew 待建 tap 仓库） |
