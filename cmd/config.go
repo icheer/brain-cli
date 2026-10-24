@@ -30,7 +30,7 @@ var configCmd = &cobra.Command{
 // configKeys 允许 get/set/list 的键，与 config.Config 字段一一对应。
 var configKeys = []string{
 	"base_url", "api_key", "default_model",
-	"timeout_seconds", "max_input_bytes", "retry_max", "models_cache_ttl_seconds",
+	"timeout_seconds", "max_input_bytes", "retry_max", "models_cache_ttl_seconds", "user_agent",
 }
 
 func init() {
@@ -177,6 +177,8 @@ func cfgValue(cfg config.Config, key string) (string, bool) {
 		return strconv.Itoa(cfg.RetryMax), true
 	case "models_cache_ttl_seconds":
 		return strconv.Itoa(cfg.ModelsCacheTTLSeconds), true
+	case "user_agent":
+		return cfg.UserAgent, true
 	}
 	return "", false
 }
@@ -201,6 +203,8 @@ func cfgSetValue(cfg *config.Config, key, value string) error {
 		return setPositiveInt(key, value, &cfg.RetryMax, 0)
 	case "models_cache_ttl_seconds":
 		return setPositiveInt(key, value, &cfg.ModelsCacheTTLSeconds, 1)
+	case "user_agent":
+		cfg.UserAgent = value
 	default:
 		return fmt.Errorf("未知配置项 %q，可用: %s", key, strings.Join(configKeys, ", "))
 	}

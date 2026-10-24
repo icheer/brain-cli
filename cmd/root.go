@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/icheer/brain-cli/internal/config"
 	"github.com/icheer/brain-cli/internal/exitcode"
 	"github.com/icheer/brain-cli/internal/gateway"
 )
@@ -53,6 +54,14 @@ func Execute() {
 	gateway.UserAgent = "brain/" + version
 	stdinPiped = isStdinPiped()
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// applyUserAgent 应用配置的 UA 覆盖（个别网关对 UA 取值校验严格）。
+// 默认保持诚实的 brain/<version>——便于网关侧遥测与排障，不伪装浏览器。
+func applyUserAgent(cfg config.Config) {
+	if cfg.UserAgent != "" {
+		gateway.UserAgent = cfg.UserAgent
+	}
 }
 
 // isStdinPiped 判定是否读取 stdin：

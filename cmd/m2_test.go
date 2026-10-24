@@ -161,3 +161,24 @@ func TestInitCancelOverwrite(t *testing.T) {
 		t.Fatalf("取消覆盖后原配置应保留:\n%s", data)
 	}
 }
+
+// 配置 user_agent 覆盖应到达网关（严格 UA 校验网关的逃生口）。
+func TestUserAgentOverride(t *testing.T) {
+	var gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+	setupConfig(t, srv.URL+"/v1", "user_agent: my-custom-agent/7\n")
+
+	code, _, _ := runBrain("ask", "-m", "fast", "q")
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	if gotUA != "my-custom-agent/7" {
+		t.Fatalf("UA 覆盖未生效: %q", gotUA)
+	}
+}

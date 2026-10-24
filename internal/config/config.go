@@ -23,6 +23,7 @@ type Config struct {
 	MaxInputBytes         int64  `yaml:"max_input_bytes"`
 	RetryMax              int    `yaml:"retry_max"`
 	ModelsCacheTTLSeconds int    `yaml:"models_cache_ttl_seconds"`
+	UserAgent             string `yaml:"user_agent"` // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
 }
 
 // Default 返回代码内默认值（优先级最低）。
@@ -102,6 +103,9 @@ func Load() (Config, []string, error) {
 	}
 	if v := os.Getenv("BRAIN_API_KEY"); v != "" {
 		cfg.APIKey = v
+	}
+	if v := os.Getenv("BRAIN_USER_AGENT"); v != "" {
+		cfg.UserAgent = v
 	}
 	if v := os.Getenv("BRAIN_TIMEOUT"); v != "" {
 		n, perr := strconv.Atoi(v)

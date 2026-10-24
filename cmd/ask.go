@@ -112,6 +112,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%v（brain config edit 可修复）", err)
 	}
+	applyUserAgent(cfg)
 	for _, w := range warnings {
 		fmt.Fprintf(stderr, "brain: 警告: %s\n", w)
 	}

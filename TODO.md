@@ -65,6 +65,7 @@ timeout_seconds: 300          # 兼容长推理模型
 max_input_bytes: 1048576      # 输入保护上限（1 MiB）
 retry_max: 2                  # 自动重试次数上限
 models_cache_ttl_seconds: 86400
+user_agent: ""                # 逃生口：个别网关校验 UA 取值时覆盖默认 brain/<version>；不伪装浏览器 UA
 ```
 
 ### 2.3 models.yaml 示例（别名 → 真实模型 + fallback 链 + 场景标注）
