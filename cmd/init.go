@@ -26,6 +26,7 @@ var initCmd = &cobra.Command{
 
   brain init --base-url https://gw.example.com/v1 --default-model fast
 
+base_url 只要是 OpenAI 兼容 API 即可，不限于网关（如 https://api.openai.com/v1）。
 api_key 刻意不设 flag（避免进入 shell history / ps 输出）：
 交互输入，或留空后由 BRAIN_API_KEY 环境变量提供。`,
 	RunE: runInit,
@@ -63,7 +64,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	baseURL := initOpts.baseURL
 	if baseURL == "" {
-		baseURL = ask("base_url（如 https://gw.example.com/v1）: ")
+		baseURL = ask("base_url（任意 OpenAI 兼容 API，如 https://api.openai.com/v1）: ")
 	}
 	if baseURL == "" || !strings.HasPrefix(baseURL, "http") {
 		return exitcode.Fail(stderr, exitcode.Usage, "base_url 不能为空且须以 http(s):// 开头")
