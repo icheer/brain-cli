@@ -52,6 +52,7 @@ jobs:
         if: ${{ env.BRAIN_BASE_URL != '' && env.BRAIN_API_KEY != '' && env.BRAIN_E2E_MODEL != '' }}
         run: |
           go build -o /tmp/brain .
-          : > /tmp/empty-config.yaml   # 空配置文件：凭据走环境变量
+          # 空配置文件（0600，避免触发权限警告）：凭据走环境变量
+          install -m 600 /dev/null /tmp/empty-config.yaml
           BRAIN_CONFIG=/tmp/empty-config.yaml /tmp/brain ping
           BRAIN_CONFIG=/tmp/empty-config.yaml /tmp/brain ask -m "$BRAIN_E2E_MODEL" --timeout 90 "只回复两个字:成功"
