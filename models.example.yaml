@@ -1,0 +1,21 @@
+# brain 模型别名示例（不含密钥，可共享）
+#
+# 用法：复制到 `brain config path` 显示的 models 位置并按需修改。
+# models 列表前者为主，故障自动切换后者（M1 起生效）；
+# use 为场景标注，供 `brain models` 展示与 SKILL.md 描述参考。
+#
+# 注意：网关 /v1/models 列出的模型未必都对本 key 可用（401/403/404），
+# 配置前建议逐个实测：brain ask -m <model-id> "只回复两个字母: OK"
+aliases:
+  fast:
+    models: [anti/gemini-3.8-flash, claude-haiku-5-5]
+    use: "快速问答、简单总结"
+  reason:
+    models: [aihub/gpt-6-astra, claude-opus-5-5]
+    use: "复杂推理、方案交叉验证"
+  coding:
+    models: [claude-sonnet-5-5, fox/claude-sonnet-5-5]
+    use: "代码审查、重构建议"
+  vision:
+    models: [fox/gemini-3.1-pro, fox/gemini-3.5-flash]
+    use: "图表/截图解析"

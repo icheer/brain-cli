@@ -18,6 +18,14 @@
 | 文件类型 | 文本文件 + 图片（本地路径 / URL）；PDF、音频明确排除，后续看情况 |
 | 流式 | 传输层始终 SSE（防代理/网关掐断空闲连接、支撑长推理）；stdout 默认等完成一次性输出；`--stream` 增量打印供人肉交互（M2） |
 | 定位 | 纯咨询/分析外脑，不做 Function Calling |
+| 输出落盘 | 不做 `-o`；统一用 shell 重定向 `> file`（SKILL.md 写明该模式）；Windows 重定向编码出现真实用户反馈再考虑 |
+| `--json` 失败语义 | 无论成败，stdout 恒定输出**一个** JSON 对象（失败时填 `error` 字段），退出码照旧（M1 落地） |
+| 采样参数 | v1 不暴露也不默认传 `temperature` / `max_tokens`，保持纯透传 |
+| models.yaml 缺失 | 可选；缺失时 `-m` 直接按字面模型 ID 处理 |
+| fallback 范围 | 连接失败 / 超时 / 429 / 5xx / 404 可切换；401/403 不切（直接 exit 2）；已输出正文永不切 |
+| base_url 默认值 | 公开 release 不带默认值；缺失 → exit 7 引导 `brain config set`；内部定制走 ldflags 注入（同版本号机制） |
+| 换行约定 | stdout 正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`（重定向产物即干净文件） |
+| 工程骨架 | Go module `github.com/icheer/brain-cli`；CLI 框架 cobra；YAML 用 yaml.v3；第三方依赖仅此二者 |
 
 ## 1. 目标与非目标
 
@@ -74,32 +82,40 @@ aliases:
 ```
 
 ### 2.4 配置管理命令与密钥安全
-- [ ] `brain config path | get <key> | set <key> <value> | list | edit`
+- [x] `brain config path | get <key> | set <key> <value> | list | edit`
 - [ ] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）
-- [ ] 密钥读取顺序：环境变量 > config.yaml；文件权限非 0600 时 stderr 警告
-- [ ] 不提供 `--api-key` flag（避免进入 shell history / `ps` 输出；一次性使用走环境变量）
+- [x] 密钥读取顺序：环境变量 > config.yaml；文件权限非 0600 时 stderr 警告
+- [x] 不提供 `--api-key` flag（避免进入 shell history / `ps` 输出；一次性使用走环境变量）
 
 ## 3. CLI 交互规范
 
 ### 3.1 输入
-- [ ] 位置参数直接传 prompt：`brain ask -m coding "重构此函数"`
-- [ ] Stdin 管道：`cat log.txt | brain ask -m reason "分析日志"`
-- [ ] `-f <file>` 文本文件，**可多次**（多文件比对），拼接时带分隔头：
+- [x] 位置参数直接传 prompt：`brain ask -m coding "重构此函数"`
+- [x] Stdin 管道：`cat log.txt | brain ask -m reason "分析日志"`
+  - stdin 读取判定：仅真实管道（`|`）或重定向的常规文件（`< file`）时读取；终端与 socket（后台任务环境，写端永不关闭）跳过——否则 ReadAll 永久阻塞
+- [x] `-f <file>` 文本文件，**可多次**（多文件比对），拼接时带分隔头：
   ```
   ----- file: src/app.go -----
   <内容>
   ```
-- [ ] `-i <path|url>` 图片，**可多次**（多图比对）；本地文件自动 sniff MIME 转 `data:image/...;base64,...`，URL 直接透传
-- [ ] `-s / --system <text>` 系统提示词（Agent 高频需求：约束外脑角色与输出格式）
-- [ ] 多来源拼接顺序：位置参数 → `-f`（按出现顺序）→ stdin（若有）
-- [ ] 输入上限保护：默认 1 MiB，超限**报错退出**（exit 6）并在 stderr 提示 `--max-input-bytes`；不静默截断，保证 Agent 可感知
+- [x] `-i <path|url>` 图片，**可多次**（多图比对）；本地文件自动 sniff MIME 转 `data:image/...;base64,...`，URL 直接透传
+- [x] `-s / --system <text>` 系统提示词（Agent 高频需求：约束外脑角色与输出格式）
+- [x] 多来源拼接顺序：位置参数 → `-f`（按出现顺序）→ stdin（若有）
+- [x] 输入上限保护：默认 1 MiB，超限**报错退出**（exit 6）并在 stderr 提示 `--max-input-bytes`；不静默截断，保证 Agent 可感知
+- [x] 完全无输入（无位置参数 / 无 `-f` / stdin 无管道）→ exit 1 + 提示
+- [x] `-f` 文件须为合法 UTF-8 文本（二进制/PDF → exit 1，明确报错不静默透传）；读取失败（不存在/是目录/无权限）归 exit 1；读取流式限长（防 `/dev/zero` 类特殊文件 OOM）
+- [x] 图片不计入 `max_input_bytes`（只对装配后文本计量）；单图上限 20 MiB（解码后）
+- [x] `-i` 图片块在 content 数组中排在文本块之后；`-s` 可重复，以空行连接
 
 ### 3.2 输出
-- [ ] **stdout**：只输出模型正文文本；默认等传输完成后一次性打印
-- [ ] **stderr**：警告、耗时、心跳（`[waiting for model… 45s | 1.2k tokens]`）、fallback 切换提示
+- [x] **stdout**：只输出模型正文文本；默认等传输完成后一次性打印
+- [ ] **stderr**：警告、耗时、心跳（`[waiting for model… 45s | 1.2k tokens]`，心跳属 M1）、fallback 切换提示
 - [ ] `--json`：结构化输出（content、thinking、实际使用模型、usage、latency_ms、finish_reason、error）
 - [ ] `--show-thinking`：推理模型思维链走 **stderr**，stdout 仍只有正文；`--json` 中两个字段并存
 - [ ] `--stream`（M2）：token 增量打印到 stdout，供人类交互使用
+- [x] 换行约定：正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`
+- [x] stdout 单一写点：全程序只允许一处代码写 stdout，配 golden test 逐字节守护
+- [ ] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空），退出码照旧，Agent 可无条件 jq 解析
 
 ### 3.3 退出码规范（Agent 消费的第一优先级信号）
 | code | 含义 |
@@ -112,17 +128,20 @@ aliases:
 | 5 | 上游/网络错误（含重试耗尽的 5xx） |
 | 6 | 输入超限 |
 | 7 | 配置缺失（无 key / 无 base_url，stderr 给出修复命令） |
+| 130 | 被中断（SIGINT），区别于超时 |
 
 ### 3.4 超时与重试
-- [ ] 默认 `timeout_seconds: 300`（长推理模型 3-5 分钟属正常），`--timeout` 可调
+- [x] 默认 `timeout_seconds: 300`（长推理模型 3-5 分钟属正常），`--timeout` 可调
 - [ ] 重试条件：连接失败 / 429 / 5xx；指数退避 + 遵循 `Retry-After`；上限 `retry_max`（默认 2），且受总 deadline 约束
-- [ ] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
+- [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
 ## 4. 模型解析与故障转移
-- [ ] `-m` 解析顺序：models.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
-- [ ] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级用缓存并 stderr 提示）
+- [x] `-m` 解析顺序：models.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
+- [x] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级用缓存并 stderr 提示）
 - [ ] Fallback 规则：仅在**尚未输出任何正文内容**前允许切换（避免半截输出污染 stdout）；切换必须 stderr 提示；`--json` 记录最终使用的模型
 - [ ] `brain ping`：自检连通性 / 鉴权 / 默认模型可用性（SKILL.md 引导 Agent 第一步先跑它）
+- [x] 无 `default_model` 且未传 `-m` → exit 7 + 修复提示
+- [x] `/v1/models` 缓存放 `os.UserCacheDir()/brain/models.json`（与配置目录区分），损坏即弃用重拉
 
 ## 5. 分发与工程化
 - [ ] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译；产出 SHA256SUMS
@@ -141,6 +160,8 @@ aliases:
 
 ## 7. 里程碑
 - **M0（MVP）**：配置体系（2.1–2.4）+ `ask`（参数/stdin/`-f`/`-i`/`-s`）+ 别名解析 + 退出码 + 纯净输出 + `brain models`（含缓存）
+  - 状态（2026-10-24）：**功能完成**，单测全绿，真实网关 e2e 通过（别名问答 / 管道日志分析 / 多文件审查 / 图片解析 / 退出码矩阵 2/3/4/5/6/7）；待「真实 Agent 会话」验收
+  - 已知网关特性：`/v1/models` 列出的模型未必对本 key 可用（401/403/404 表达无权限/不支持），别名映射需逐个实测（models.example.yaml 已注明）
   - 验收：在真实 Agent 会话中完成「管道日志分析」与「多图比对」端到端演练
 - **M1**：传输层 SSE + stderr 心跳 + fallback + `--json` + 超时重试策略 + `brain ping`
 - **M2**：`--stream`、`--show-thinking`、`brain init` 交互引导、Homebrew tap
@@ -148,6 +169,6 @@ aliases:
 
 ## 8. 开放问题
 1. **网关密钥发放**：若网关目前只有一把共享 key，公开分发前需先支持按用户发 key（网关侧配套工作，需确认可行性与时间点）
-2. **base_url 默认值**：是否适合写进公开仓库（若网关为内部部署，URL 本身是否敏感）
-3. Fallback 触发范围精确化：仅 429/5xx，网络错误算不算？
-4. Windows 真机测试环境来源
+2. Windows 真机测试环境来源
+
+> 2026-10-24 已拍板并移入第 0 节：base_url 默认值（公开 release 不带）、fallback 触发范围、输出不做 `-o`、`--json` 失败语义、采样参数不透传、models.yaml 可选、工程骨架选型。

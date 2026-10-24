@@ -13,7 +13,7 @@
 
 ## 当前状态
 
-**:construction: 设计阶段** —— 设计文档 v2 已定稿（见 [TODO.md](TODO.md)），M0 开发未开始。
+**:construction: 开发中** —— M0（MVP）实现进行中，里程碑见 [TODO.md](TODO.md) 第 7 节。
 
 ## 开发路线
 
