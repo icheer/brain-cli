@@ -1,0 +1,22 @@
+# 个人配置（含 api_key，绝不提交）
+config.yaml
+config.yml
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+dist/
+bin/
+
+# goreleaser
+dist/
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
