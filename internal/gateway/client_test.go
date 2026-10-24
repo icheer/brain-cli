@@ -4,98 +4,135 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestChatCompletionSuccess(t *testing.T) {
+// emitSSE 向响应写一个 SSE data 事件并立即 flush。
+func emitSSE(w http.ResponseWriter, v any) {
+	b, _ := json.Marshal(v)
+	fmt.Fprintf(w, "data: %s\n\n", b)
+	if fl, ok := w.(http.Flusher); ok {
+		fl.Flush()
+	}
+}
+
+// sseChat 返回一段标准成功流：thinking + 两个 content 增量 + finish + usage + DONE。
+func sseChat(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, ": keep-alive\n\n")
+	emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"reasoning_content": "思考"}}}})
+	emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": "你"}}}})
+	emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": "好"}}}})
+	emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{}, "finish_reason": "stop"}}})
+	emitSSE(w, map[string]any{"choices": []any{}, "usage": map[string]any{"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}})
+	fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func TestChatCompletionStreamSuccess(t *testing.T) {
 	var gotAuth, gotModel string
-	var gotBody map[string]any
+	var streamFlag any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
-			t.Errorf("路径不符: %s", r.URL.Path)
-		}
 		gotAuth = r.Header.Get("Authorization")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Errorf("解析请求失败: %v", err)
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("解析请求: %v", err)
 		}
-		_, _ = w.Write([]byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":"你好"},"finish_reason":"stop"}]}`))
+		gotModel, _ = req["model"].(string)
+		streamFlag = req["stream"]
+		sseChat(w)
 	}))
 	defer srv.Close()
 
+	var contentChars, reasoningChars int
 	c := New(srv.URL, "test-key", 5*time.Second)
-	resp, err := c.ChatCompletion(context.Background(), ChatRequest{
-		Model:    "m-a",
-		Messages: []Message{{Role: "user", Content: "hi"}},
-		Stream:   false,
-	})
+	res, err := c.ChatCompletionStream(context.Background(),
+		ChatRequest{Model: "m-a", Messages: []Message{{Role: "user", Content: "hi"}}},
+		func(content, reasoning string) {
+			contentChars += len(content)
+			reasoningChars += len(reasoning)
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotAuth != "Bearer test-key" {
 		t.Fatalf("Authorization: %q", gotAuth)
 	}
-	if gotModel, _ = gotBody["model"].(string); gotModel != "m-a" {
-		t.Fatalf("model: %q", gotModel)
+	if gotModel != "m-a" || streamFlag != true {
+		t.Fatalf("请求体不符: model=%q stream=%v", gotModel, streamFlag)
 	}
-	if gotBody["stream"] != false {
-		t.Fatalf("stream 应为 false: %v", gotBody["stream"])
+	if res.Content != "你好" || res.Thinking != "思考" || res.FinishReason != "stop" {
+		t.Fatalf("累积结果不符: %+v", res)
 	}
-	if resp.Choices[0].Message.Content != "你好" || resp.Choices[0].FinishReason != "stop" {
-		t.Fatalf("响应不符: %+v", resp.Choices[0])
+	if res.Usage == nil || res.Usage.TotalTokens != 7 {
+		t.Fatalf("usage: %+v", res.Usage)
 	}
-}
-
-func TestStatusErrors(t *testing.T) {
-	for _, status := range []int{401, 429, 500} {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(status)
-			_, _ = w.Write([]byte(`{"error":{"message":"boom"}}`))
-		}))
-		c := New(srv.URL, "k", 5*time.Second)
-		_, err := c.ChatCompletion(context.Background(), ChatRequest{Model: "m"})
-		srv.Close()
-
-		var se *StatusError
-		if !errors.As(err, &se) {
-			t.Fatalf("status %d: 应得 StatusError，得到 %v", status, err)
-		}
-		if se.Status != status {
-			t.Fatalf("status %d: 得到 %d", status, se.Status)
-		}
-		if se.Body == "" {
-			t.Fatalf("status %d: Body 为空", status)
-		}
+	if contentChars != len("你好") || reasoningChars != len("思考") {
+		t.Fatalf("增量回调计数: %d/%d", contentChars, reasoningChars)
 	}
 }
 
-func TestTimeout(t *testing.T) {
+func TestStreamStatusError(t *testing.T) {
+	// 401 无 Retry-After
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(300 * time.Millisecond)
-		_, _ = w.Write([]byte(`{}`))
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	}))
+	c := New(srv.URL, "k", 5*time.Second)
+	_, err := c.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"}, nil)
+	srv.Close()
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != 401 || se.RetryAfter != 0 {
+		t.Fatalf("401 应得 StatusError: %v", err)
+	}
+
+	// 429 带 Retry-After: 2
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "2")
+		w.WriteHeader(429)
+		_, _ = w.Write([]byte(`{"error":{"message":"rate limit"}}`))
+	}))
+	defer srv2.Close()
+	c2 := New(srv2.URL, "k", 5*time.Second)
+	_, err = c2.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"}, nil)
+	if !errors.As(err, &se) || se.Status != 429 || se.RetryAfter != 2*time.Second {
+		t.Fatalf("429 应携带 Retry-After=2s: %v", err)
+	}
+}
+
+func TestStreamMidTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": "半"}}}})
+		time.Sleep(1 * time.Second)
+		emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": "截"}}}})
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "k", 50*time.Millisecond)
-	_, err := c.ChatCompletion(context.Background(), ChatRequest{Model: "m"})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	c := New(srv.URL, "k", 5*time.Second)
+	_, err := c.ChatCompletionStream(ctx, ChatRequest{Model: "m"}, nil)
 	var te *TimeoutError
 	if !errors.As(err, &te) {
-		t.Fatalf("应得 TimeoutError，得到 %v", err)
+		t.Fatalf("中途超时应得 TimeoutError，得到 %v", err)
 	}
 }
 
-func TestNoChoices(t *testing.T) {
+func TestStreamEmptyBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[]}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer srv.Close()
-
 	c := New(srv.URL, "k", 5*time.Second)
-	_, err := c.ChatCompletion(context.Background(), ChatRequest{Model: "m"})
-	if err == nil {
-		t.Fatal("空 choices 应报错")
+	if _, err := c.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"}, nil); err == nil {
+		t.Fatal("空流应报错")
 	}
 }
 
@@ -112,5 +149,23 @@ func TestListModels(t *testing.T) {
 	}
 	if len(ids) != 3 || ids[0] != "a" || ids[2] != "c" {
 		t.Fatalf("应排序返回，得到 %v", ids)
+	}
+}
+
+// 真实网关行为：HTTP 200 但错误藏在 SSE data 事件里，应转为 StatusError 参与分类。
+func TestStreamErrorEvent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"error\":{\"message\":\"Requested entity was not found.\",\"type\":\"upstream_api_error\",\"code\":404}}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":22,\"completion_tokens\":0,\"total_tokens\":22}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k", 5*time.Second)
+	_, err := c.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"}, nil)
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != 404 || !strings.Contains(se.Body, "not found") {
+		t.Fatalf("流内 error 事件应映射 404 StatusError，得到 %v", err)
 	}
 }

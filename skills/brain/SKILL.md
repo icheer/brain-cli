@@ -7,13 +7,21 @@ description: 大模型网关外脑咨询工具。当需要复杂推理的交叉�
 
 `brain` 通过网关调用其他厂商的大模型，给宿主 Agent 提供独立视角。它是无状态的：多轮上下文由你自己拼接。
 
-## 第一步：自检
+## 第 0 步：安装（仅首次）
+
+技能目录不带二进制（Go + TLS 下限约 6.4MB，按需下载更合适）。若 `brain` 不在 PATH：
 
 ```bash
-brain models    # 列出别名与可用模型（首次使用前确认配置就绪）
+bash "$(dirname "$SKILL_DIR")/install.sh"   # 或仓库 skills/brain/install.sh
 ```
 
-若提示配置缺失（exit 7），按 stderr 指引执行 `brain config set ...` 修复后再继续。
+## 第 1 步：自检
+
+```bash
+brain ping    # 连通性 / 鉴权 / 默认模型 三项自检
+```
+
+stdout 逐行输出 OK；按 exit code 处理失败（7=配置缺失，按 stderr 提示修复）。
 
 ## 何时调用
 
@@ -42,13 +50,18 @@ brain ask -m vision -i chart.png "这张图的数据趋势说明什么"
 
 # 长输出落盘，避免塞爆上下文（按需再 Read/Grep 检索）
 brain ask -m reason "详细推演方案A的风险" > /tmp/brain-out.md
+
+# 需要元数据（usage/latency/finish_reason/思维链）时用 --json，stdout 恒定单对象
+brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
 ```
 
 ## 工程注意
 
 - **超时**：宿主 Bash 工具超时必须大于 brain 超时（如 brain 300s → Bash 360s+），否则进程会被宿主先杀掉
-- **退出码优先读**：0 成功；1 用法错误；2 认证失败（检查 api_key，勿重试）；3 限流耗尽（稍后再试）；4 超时（可换 fast 模型重试）；5 上游错误（stderr 里的「相近的可用模型」提示可直接换模型重试）；6 输入超限（拆分后重试）；7 配置缺失（先修复）
-- stdout 只有模型正文（可直接采信/落盘）；耗时/警告在 stderr
+- **长推理**：每 15s stderr 输出心跳（`waiting for model… 45s | ~1.2k chars`）；stderr 的「故障转移 / 重试」提示不用管，工具会自动换别名链上的下一模型
+- **退出码优先读**：0 成功；1 用法错误；2 认证失败（检查 api_key，勿重试）；3 限流耗尽（稍后再试）；4 超时（可换 fast 模型重试）；5 上游错误（stderr 里「相近的可用模型」提示可直接换模型重试）；6 输入超限（拆分后重试）；7 配置缺失（先修复）
+- stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
+- `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型，或改小问题粒度重试
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
 
 ## 输出落地

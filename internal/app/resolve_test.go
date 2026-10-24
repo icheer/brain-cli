@@ -30,6 +30,20 @@ func TestResolveEmptyAlias(t *testing.T) {
 	}
 }
 
+func TestModelChain(t *testing.T) {
+	mf := config.ModelsFile{Aliases: map[string]config.Alias{
+		"fast": {Models: []string{"m-primary", "m-backup"}},
+	}}
+	chain, err := ModelChain("fast", mf)
+	if err != nil || len(chain) != 2 || chain[0] != "m-primary" || chain[1] != "m-backup" {
+		t.Fatalf("别名应展开为完整链: %v, %v", chain, err)
+	}
+	chain, err = ModelChain("literal/model-id", mf)
+	if err != nil || len(chain) != 1 || chain[0] != "literal/model-id" {
+		t.Fatalf("字面 ID 应为单元素链: %v, %v", chain, err)
+	}
+}
+
 func TestSuggest(t *testing.T) {
 	mf := config.ModelsFile{Aliases: map[string]config.Alias{
 		"fast":   {Models: []string{"m1"}},

@@ -1,0 +1,54 @@
+# goreleaser 配置（TODO.md 第 5 节）
+# 体积策略：-s -w 剥离符号（实测 ~9MB）；≤1MiB 在 Go+TLS 下不可达（下限 ~6.4MB），
+# 技能分发走「安装器按需下载 + SHA256 校验」（skills/brain/install.sh），不在技能目录内置二进制。
+version: 2
+
+project_name: brain
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: brain
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/icheer/brain-cli/cmd.version={{.Version}}
+      - -X github.com/icheer/brain-cli/cmd.commit={{.FullCommit}}
+
+archives:
+  - id: brain
+    # 全平台统一 tar.gz（Windows 10+ 自带 tar，安装器无需区分解包工具）
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - models.example.yaml
+
+checksum:
+  name_template: SHA256SUMS
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "Merge pull request"
+
+release:
+  github:
+    owner: icheer
+    name: brain-cli

@@ -8,16 +8,25 @@ import (
 	"github.com/icheer/brain-cli/internal/config"
 )
 
-// ResolveModel 解析 -m / default_model：
-// models.yaml 别名（取 fallback 链首位）→ 字面模型 ID（交给网关裁决，TODO.md 第 4 节）。
-func ResolveModel(name string, mf config.ModelsFile) (string, error) {
+// ModelChain 把 -m / default_model 展开为尝试链：
+// 别名 → 其 fallback 链（原顺序，M1 起逐个故障转移）；字面 ID → 单元素链。
+func ModelChain(name string, mf config.ModelsFile) ([]string, error) {
 	if a, ok := mf.Aliases[name]; ok {
 		if len(a.Models) == 0 {
-			return "", &InputError{Msg: fmt.Sprintf("models.yaml 中别名 %q 的 models 列表为空", name)}
+			return nil, &InputError{Msg: fmt.Sprintf("models.yaml 中别名 %q 的 models 列表为空", name)}
 		}
-		return a.Models[0], nil
+		return a.Models, nil
 	}
-	return name, nil
+	return []string{name}, nil
+}
+
+// ResolveModel 解析链首位（TODO.md 第 4 节：别名 → 字面模型 ID，ID 交网关裁决）。
+func ResolveModel(name string, mf config.ModelsFile) (string, error) {
+	chain, err := ModelChain(name, mf)
+	if err != nil {
+		return "", err
+	}
+	return chain[0], nil
 }
 
 // Suggest 从候选（本地别名 + 已缓存模型）中挑选相近项，用于模型不可用时的 stderr 提示。

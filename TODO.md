@@ -26,6 +26,9 @@
 | base_url 默认值 | 公开 release 不带默认值；缺失 → exit 7 引导 `brain config set`；内部定制走 ldflags 注入（同版本号机制） |
 | 换行约定 | stdout 正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`（重定向产物即干净文件） |
 | 工程骨架 | Go module `github.com/icheer/brain-cli`；CLI 框架 cobra；YAML 用 yaml.v3；第三方依赖仅此二者 |
+| 技能分发体积 | 技能目录不内置二进制（Go+TLS 实测下限 ~6.4MB，≤1MiB 不可达）；携带 install.sh 从 Release 按需下载 + SHA256 校验；Release 统一 `-s -w` 剥离 + 全平台 tar.gz |
+| 流内错误事件 | 真实网关（one-api 系）会以 HTTP 200 + `data:{"error":{code}}` 回错；按其 code 转成 StatusError 参与分类（404/model_not_found → 立即换模型） |
+| 空正文语义 | 正文为空仍 exit 0 + stderr 警告（含 finish_reason 与思维链长度提示）；思维链只在 `--json` 的 thinking 字段提供 |
 
 ## 1. 目标与非目标
 
@@ -109,13 +112,14 @@ aliases:
 
 ### 3.2 输出
 - [x] **stdout**：只输出模型正文文本；默认等传输完成后一次性打印
-- [ ] **stderr**：警告、耗时、心跳（`[waiting for model… 45s | 1.2k tokens]`，心跳属 M1）、fallback 切换提示
-- [ ] `--json`：结构化输出（content、thinking、实际使用模型、usage、latency_ms、finish_reason、error）
+- [x] **stderr**：警告、耗时、心跳（`waiting for model… 45s | ~1.2k chars`，每 15s）、fallback 切换与重试提示
+- [x] `--json`：结构化输出（content、thinking、实际使用模型、requested_model、usage、latency_ms、finish_reason、error）
 - [ ] `--show-thinking`：推理模型思维链走 **stderr**，stdout 仍只有正文；`--json` 中两个字段并存
 - [ ] `--stream`（M2）：token 增量打印到 stdout，供人类交互使用
 - [x] 换行约定：正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`
 - [x] stdout 单一写点：全程序只允许一处代码写 stdout，配 golden test 逐字节守护
-- [ ] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空），退出码照旧，Agent 可无条件 jq 解析
+- [x] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空，code 与退出码一致），退出码照旧，Agent 可无条件 jq 解析
+- [x] 空正文处理：exit 0 + stderr 警告（finish_reason 与思维链长度提示）
 
 ### 3.3 退出码规范（Agent 消费的第一优先级信号）
 | code | 含义 |
@@ -132,24 +136,24 @@ aliases:
 
 ### 3.4 超时与重试
 - [x] 默认 `timeout_seconds: 300`（长推理模型 3-5 分钟属正常），`--timeout` 可调
-- [ ] 重试条件：连接失败 / 429 / 5xx；指数退避 + 遵循 `Retry-After`；上限 `retry_max`（默认 2），且受总 deadline 约束
+- [x] 重试条件：连接失败 / 429 / 5xx；指数退避（1s/2s/4s 封顶 8s）+ 遵循 `Retry-After`；上限 `retry_max`（默认 2），且受总 deadline 约束（404/model_not_found/超时直接换模型不重试同模型）
 - [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
 ## 4. 模型解析与故障转移
 - [x] `-m` 解析顺序：models.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
 - [x] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级用缓存并 stderr 提示）
-- [ ] Fallback 规则：仅在**尚未输出任何正文内容**前允许切换（避免半截输出污染 stdout）；切换必须 stderr 提示；`--json` 记录最终使用的模型
-- [ ] `brain ping`：自检连通性 / 鉴权 / 默认模型可用性（SKILL.md 引导 Agent 第一步先跑它）
+- [x] Fallback 规则：仅在**尚未输出任何正文内容**前允许切换（一次性输出天然满足）；切换/重试均 stderr 提示；`--json` 的 model 字段记录最终使用的模型
+- [x] `brain ping`：自检连通性 / 鉴权 / 默认模型可用性（SKILL.md 引导 Agent 第一步先跑它）
 - [x] 无 `default_model` 且未传 `-m` → exit 7 + 修复提示
 - [x] `/v1/models` 缓存放 `os.UserCacheDir()/brain/models.json`（与配置目录区分），损坏即弃用重拉
 
 ## 5. 分发与工程化
-- [ ] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译；产出 SHA256SUMS
-- [ ] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 跨平台构建冒烟 + 一次真实网关调用的 e2e（key 走 repo secret）
-- [ ] `--version`：ldflags 注入 git tag / commit
-- [ ] README：30 秒快速开始（安装 + 两条命令配置 + 第一次调用）+ 一键安装脚本
+- [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（配置已过 `goreleaser check`，待首个 tag 全链路验证）
+- [x] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 6 目标交叉构建冒烟（真实网关 e2e 待配 repo secret 后补）
+- [x] `--version`：ldflags 注入 git tag / commit
+- [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）
 - [ ] 可选：Homebrew tap；`go install` 作为开发者备选
-- [ ] SKILL.md 随仓库分发（`skills/brain/SKILL.md`），README 说明如何链接/复制进 `.claude/skills/` 或 `.agents/skills/`
+- [x] SKILL.md 随仓库分发（`skills/brain/SKILL.md`），README 说明如何链接/复制进 `.claude/skills/` 或 `.agents/skills/`
 
 ## 6. 配套 Agent Skill（SKILL.md）设计
 - [ ] **触发时机**：复杂推理交叉验证、第二意见代码审查、视觉/图表解析、死循环时的破局咨询
@@ -164,6 +168,8 @@ aliases:
   - 已知网关特性：`/v1/models` 列出的模型未必对本 key 可用（401/403/404 表达无权限/不支持），别名映射需逐个实测（models.example.yaml 已注明）
   - 验收：在真实 Agent 会话中完成「管道日志分析」与「多图比对」端到端演练
 - **M1**：传输层 SSE + stderr 心跳 + fallback + `--json` + 超时重试策略 + `brain ping`
+  - 状态（2026-10-24）：**功能完成**，单测全绿，真实网关 e2e 通过（SSE 问答 / 心跳 15s×7 / `--json` 含真实 usage+thinking / 真实故障转移 503→model_not_found 即时切换 / ping 三项自检）；分发流水线就绪（goreleaser + CI + install.sh），待首个 tag 验证
+  - 真实网关经验：错误可能以 503+model_not_found 或 HTTP 200 流内 `data:{"error"}` 出现，均已按第 0 节分类处理
 - **M2**：`--stream`、`--show-thinking`、`brain init` 交互引导、Homebrew tap
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
 

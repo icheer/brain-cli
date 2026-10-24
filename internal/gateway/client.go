@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,7 +25,8 @@ type Client struct {
 	APIKey  string
 }
 
-// New 构造客户端；timeout 覆盖整个请求生命周期（连接+首字节+读体）。
+// New 构造客户端；timeout 作为兜底（请求生命周期上限），
+// 重试/故障转移的总预算由调用方通过 ctx deadline 控制。
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
 	return &Client{
 		HTTP:    &http.Client{Timeout: timeout},
@@ -35,8 +37,9 @@ func New(baseURL, apiKey string, timeout time.Duration) *Client {
 
 // StatusError 表示网关返回了非 2xx 响应。
 type StatusError struct {
-	Status int
-	Body   string // 截断后的响应体片段，便于诊断
+	Status     int
+	Body       string        // 截断后的响应体片段，便于诊断
+	RetryAfter time.Duration // 429 时来自 Retry-After 头（0 表示无）
 }
 
 func (e *StatusError) Error() string {
@@ -48,18 +51,6 @@ type TimeoutError struct{ Err error }
 
 func (e *TimeoutError) Error() string { return "请求超时: " + e.Err.Error() }
 func (e *TimeoutError) Unwrap() error { return e.Err }
-
-// ChatCompletion 发起一次咨询。M0 语义：无重试、无 fallback（M1 引入）。
-func (c *Client) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	var out ChatResponse
-	if err := c.do(ctx, http.MethodPost, "/chat/completions", req, &out); err != nil {
-		return nil, err
-	}
-	if len(out.Choices) == 0 {
-		return nil, fmt.Errorf("网关响应中没有 choices")
-	}
-	return &out, nil
-}
 
 // ListModels 拉取 /v1/models，返回排序后的模型 ID 列表。
 func (c *Client) ListModels(ctx context.Context) ([]string, error) {
@@ -109,7 +100,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return fmt.Errorf("读取响应失败: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &StatusError{Status: resp.StatusCode, Body: truncate(string(data), 400)}
+		return &StatusError{Status: resp.StatusCode, Body: truncate(string(data), 400), RetryAfter: retryAfter(resp)}
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
@@ -117,6 +108,23 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		}
 	}
 	return nil
+}
+
+// retryAfter 解析 Retry-After 头（秒数或 HTTP 日期；非法返回 0）。
+func retryAfter(resp *http.Response) time.Duration {
+	v := resp.Header.Get("Retry-After")
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(v); err == nil && secs >= 0 {
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
 }
 
 func isTimeout(err error) bool {

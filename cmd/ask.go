@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -25,20 +28,21 @@ type askOptions struct {
 	system        []string
 	timeout       int
 	maxInputBytes int64
+	jsonOut       bool
 }
 
 var askOpts askOptions
 
 var askCmd = &cobra.Command{
-	Use:   "ask [-m model] [-f file]... [-i image]... [-s system]... [prompt...]",
-	Short: "发起一次咨询，stdout 只输出模型正文",
+	Use:   "ask [-m model] [-f file]... [-i image]... [-s system]... [--json] [prompt...]",
+	Short: "发起一次咨询，stdout 只输出模型正文（--json 时为单行 JSON）",
 	Long: `发起一次咨询。输入按「位置参数 → -f（按出现顺序）→ stdin 管道」拼接，
-图片以 -i 追加在文本之后。示例：
+图片以 -i 追加在文本之后。别名自带故障转移链，失败自动换下一模型（stderr 提示）。示例：
 
   brain ask -m coding "审查这段代码的并发安全性"
   cat slow.log | brain ask -m reason "找出最慢的三处并解释原因"
   brain ask -m vision -i chart.png "这张图说明了什么"
-  brain ask -s "你是严格的代码审查员" -f a.go -f b.go "对比两个实现"`,
+  brain ask -m reason --json "推演方案" | jq -r .content`,
 	Args: cobra.ArbitraryArgs,
 	RunE: runAsk,
 }
@@ -48,12 +52,52 @@ func init() {
 	askCmd.Flags().StringArrayVarP(&askOpts.files, "file", "f", nil, "文本文件，可多次")
 	askCmd.Flags().StringArrayVarP(&askOpts.images, "image", "i", nil, "图片（本地路径或 URL），可多次")
 	askCmd.Flags().StringArrayVarP(&askOpts.system, "system", "s", nil, "系统提示词，可重复（以空行连接）")
-	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0, "整体超时秒数（覆盖 config）")
+	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0, "整体超时秒数（含重试与故障转移，覆盖 config）")
 	askCmd.Flags().Int64Var(&askOpts.maxInputBytes, "max-input-bytes", 0, "输入文本上限字节数（覆盖 config）")
+	askCmd.Flags().BoolVar(&askOpts.jsonOut, "json", false, "单行 JSON 输出（成败恒定一个对象，含 usage/latency/error）")
 }
 
-func runAsk(cmd *cobra.Command, args []string) error {
+// heartbeatInterval 心跳间隔（TODO.md 3.2：长推理时的 stderr 进度提示）。
+const heartbeatInterval = 15 * time.Second
+
+// askJSON 是 --json 的输出结构（TODO.md 3.2：成败恒定一个对象，Agent 可无条件 jq）。
+type askJSON struct {
+	Content      string         `json:"content"`
+	Thinking     string         `json:"thinking,omitempty"`
+	Model        string         `json:"model"`
+	Requested    string         `json:"requested_model"`
+	Usage        *gateway.Usage `json:"usage"`
+	LatencyMs    int64          `json:"latency_ms"`
+	FinishReason string         `json:"finish_reason"`
+	Error        *askJSONError  `json:"error"`
+}
+
+type askJSONError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+	// --json：无论成败（含配置/输入错误），stdout 恒定输出一个 JSON 对象
+	payload := askJSON{}
+	defer func() {
+		if !askOpts.jsonOut {
+			return
+		}
+		if retErr != nil {
+			code := exitcode.Usage
+			var ee *exitcode.Error
+			if errors.As(retErr, &ee) {
+				code = ee.Code
+			}
+			payload.Error = &askJSONError{Code: code, Message: retErr.Error()}
+		}
+		if b, err := json.Marshal(payload); err == nil {
+			fmt.Fprintln(stdout, string(b)) // --json 写点，与正文写点互斥
+		}
+	}()
 
 	cfg, warnings, err := config.Load()
 	if err != nil {
@@ -85,12 +129,13 @@ func runAsk(cmd *cobra.Command, args []string) error {
 	if name == "" {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "未指定模型，修复：-m <别名或模型ID> 或 brain config set default_model <别名>")
 	}
+	payload.Requested = name
 
 	mf, err := config.LoadModels()
 	if err != nil {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
-	modelID, err := app.ResolveModel(name, mf)
+	chain, err := app.ModelChain(name, mf)
 	if err != nil {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
@@ -130,9 +175,12 @@ func runAsk(cmd *cobra.Command, args []string) error {
 	}
 	messages = append(messages, gateway.Message{Role: "user", Content: parts})
 
-	// SIGINT/SIGTERM → exit 130（区别于超时的 exit 4）
-	ctx, cancel := context.WithCancel(cmd.Context())
+	// 总预算 = timeout_seconds，覆盖全部尝试与退避等待（TODO.md 3.4）
+	budget := time.Duration(cfg.TimeoutSeconds) * time.Second
+	ctx, cancel := context.WithTimeout(cmd.Context(), budget)
 	defer cancel()
+
+	// SIGINT/SIGTERM → exit 130（区别于超时的 exit 4）
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
@@ -146,36 +194,79 @@ func runAsk(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
+	// 心跳：长推理每 15s 报一次进度（stderr）
+	var gotChars atomic.Int64
+	hbDone := make(chan struct{})
+	hbStop := sync.OnceFunc(func() { close(hbDone) })
+	go func() {
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-hbDone:
+				return
+			case <-ticker.C:
+				fmt.Fprintf(stderr, "brain: waiting for model… %.0fs | ~%s chars\n",
+					time.Since(start).Seconds(), humanCount(gotChars.Load()))
+			}
+		}
+	}()
+
 	start := time.Now()
-	g := gateway.New(cfg.BaseURL, cfg.APIKey, time.Duration(cfg.TimeoutSeconds)*time.Second)
-	resp, err := g.ChatCompletion(ctx, gateway.ChatRequest{Model: modelID, Messages: messages, Stream: false})
+	engine := &app.AskEngine{
+		Client:   gateway.New(cfg.BaseURL, cfg.APIKey, budget),
+		Stderr:   stderr,
+		RetryMax: cfg.RetryMax,
+	}
+	res, used, err := engine.Ask(ctx, chain,
+		func(m string) gateway.ChatRequest { return gateway.ChatRequest{Model: m, Messages: messages} },
+		func(content, reasoning string) { gotChars.Add(int64(len(content) + len(reasoning))) })
+	hbStop()
+
 	if err != nil {
 		select {
 		case <-interrupted:
 			return exitcode.Fail(stderr, exitcode.Interrupt, "被中断")
 		default:
 		}
-		// 模型不可用时给出相近建议（若有缓存可用）；别名与其解析出的 ID 都作种子
+		payload.LatencyMs = time.Since(start).Milliseconds()
+		// 模型不可用时给出相近建议（若有缓存可用）；别名与链上模型都作种子
 		var se *gateway.StatusError
-		if errors.As(err, &se) && looksLikeModelError(se) {
-			if cands := app.Suggest([]string{name, modelID}, mf, app.ReadCachedModels()); len(cands) > 0 {
+		if errors.As(err, &se) && app.IsModelError(se) {
+			if cands := app.Suggest(append([]string{name}, chain...), mf, app.ReadCachedModels()); len(cands) > 0 {
 				fmt.Fprintf(stderr, "brain: 相近的可用模型: %s\n", strings.Join(cands, ", "))
 			}
 		}
 		return exitcode.Fail(stderr, exitCodeFor(err), "%v", err)
 	}
 
-	content := resp.Choices[0].Message.Content
-	if content == "" {
-		fmt.Fprintf(stderr, "brain: 警告: 模型返回空内容（finish_reason=%s）\n", resp.Choices[0].FinishReason)
+	payload.Content = res.Content
+	payload.Thinking = res.Thinking
+	payload.Model = used
+	payload.Usage = res.Usage
+	payload.LatencyMs = time.Since(start).Milliseconds()
+	payload.FinishReason = res.FinishReason
+
+	if res.Content == "" {
+		// 真实场景：思维链把输出预算耗尽（finish_reason=length）导致正文为空
+		note := ""
+		if res.Thinking != "" {
+			note = fmt.Sprintf("，收到思维链 ~%s 字符（--json 可读取 thinking）", humanCount(int64(len(res.Thinking))))
+		}
+		fmt.Fprintf(stderr, "brain: 警告: 模型返回空内容（finish_reason=%s%s）\n", res.FinishReason, note)
 	}
 
 	// 全程序唯一的 stdout 正文写点（TODO.md 3.2「stdout 单一写点」），
-	// 换行约定：正文末尾保证恰好一个 \n。
-	if content != "" {
-		fmt.Fprint(stdout, ensureSingleNewline(content))
+	// 换行约定：正文末尾保证恰好一个 \n；--json 模式走 defer 的 JSON 写点。
+	if !askOpts.jsonOut && res.Content != "" {
+		fmt.Fprint(stdout, ensureSingleNewline(res.Content))
 	}
-	fmt.Fprintf(stderr, "brain: %.1fs | 模型 %s\n", time.Since(start).Seconds(), modelID)
+	fallbackNote := ""
+	if used != chain[0] {
+		fallbackNote = "（已故障转移）"
+	}
+	fmt.Fprintf(stderr, "brain: %.1fs | 模型 %s%s\n", time.Since(start).Seconds(), used, fallbackNote)
 	return nil
 }
 
@@ -184,12 +275,12 @@ func ensureSingleNewline(s string) string {
 	return strings.TrimRight(s, "\n") + "\n"
 }
 
-// looksLikeModelError 粗判网关错误是否与模型名有关（404 或错误体提到 model）。
-func looksLikeModelError(se *gateway.StatusError) bool {
-	if se.Status == 404 {
-		return true
+// humanCount 心跳里的字符数显示：<1000 原样，否则 k 计。
+func humanCount(n int64) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
 	}
-	return strings.Contains(strings.ToLower(se.Body), "model")
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
 }
 
 // humanBytes 给 Agent/人类都易读的字节数。

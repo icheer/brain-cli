@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,7 +13,8 @@ import (
 	"time"
 )
 
-// fakeGateway 起一个 OpenAI 兼容假网关：记录请求体，按给定状态码返回固定正文。
+// fakeGateway 起一个 OpenAI 兼容假网关（SSE 传输）：
+// 记录请求体；status==200 时把 content 拆成两个增量流出，否则返回错误 JSON。
 // /models 固定返回 m-a、m-b 两个模型。
 func fakeGateway(t *testing.T, status int, content string) (*httptest.Server, *map[string]any) {
 	t.Helper()
@@ -28,10 +30,36 @@ func fakeGateway(t *testing.T, status int, content string) (*httptest.Server, *m
 			return
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		contentJSON, _ := json.Marshal(content)
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":` +
-			string(contentJSON) + `},"finish_reason":"stop"}]}`))
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":{"message":"boom"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		emit := func(v any) {
+			b, _ := json.Marshal(v)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+			if fl != nil {
+				fl.Flush()
+			}
+		}
+		runes := []rune(content)
+		mid := len(runes) / 2
+		if mid == 0 {
+			mid = len(runes)
+		}
+		emit(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": string(runes[:mid])}}}})
+		if mid < len(runes) {
+			emit(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": string(runes[mid:])}}}})
+		}
+		emit(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{}, "finish_reason": "stop"}}})
+		emit(map[string]any{"choices": []any{}, "usage": map[string]any{"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}})
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &body
@@ -41,7 +69,7 @@ func fakeGateway(t *testing.T, status int, content string) (*httptest.Server, *m
 func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := "base_url: " + baseURL + "\napi_key: test-key\ndefault_model: fast\ntimeout_seconds: 5\n"
+	cfg := "base_url: " + baseURL + "\napi_key: test-key\ndefault_model: fast\ntimeout_seconds: 5\nretry_max: 0\n"
 	cfg += strings.Join(extra, "\n")
 	cfgPath := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
@@ -265,6 +293,72 @@ func TestAskUnknownFlagExit1(t *testing.T) {
 	code, _, _ := runBrain("ask", "--nope")
 	if code != 1 {
 		t.Fatalf("code=%d", code)
+	}
+}
+
+// --json：成功时单行 JSON，error 为 null。
+func TestAskJSONSuccess(t *testing.T) {
+	srv, _ := fakeGateway(t, 200, "正文内容")
+	setupConfig(t, srv.URL+"/v1")
+
+	code, out, _ := runBrain("ask", "-m", "fast", "--json", "q")
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	if strings.Count(out, "\n") != 1 || !strings.HasSuffix(out, "\n") {
+		t.Fatalf("应为单行 JSON + 单换行: %q", out)
+	}
+	var got struct {
+		Content      string `json:"content"`
+		Model        string `json:"model"`
+		Requested    string `json:"requested_model"`
+		FinishReason string `json:"finish_reason"`
+		Usage        *struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+		Error *struct {
+			Code int `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("解析 JSON: %v\n%s", err, out)
+	}
+	if got.Content != "正文内容" || got.Model != "m-a" || got.Requested != "fast" ||
+		got.FinishReason != "stop" || got.Usage == nil || got.Usage.TotalTokens != 7 {
+		t.Fatalf("字段不符: %+v", got)
+	}
+	if got.Error != nil {
+		t.Fatalf("成功时 error 应为 null: %+v", got.Error)
+	}
+}
+
+// --json：失败时 stdout 仍恒定输出一个 JSON 对象，error.code 与退出码一致。
+func TestAskJSONFailureStillOneObject(t *testing.T) {
+	srv, _ := fakeGateway(t, 500, "x")
+	setupConfig(t, srv.URL+"/v1") // retry_max: 0，两模型各打一次即结束
+
+	code, out, errStr := runBrain("ask", "-m", "fast", "--json", "q")
+	if code != 5 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	if strings.Count(out, "\n") != 1 {
+		t.Fatalf("应为单行 JSON: %q", out)
+	}
+	var got struct {
+		Content string `json:"content"`
+		Error   *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("解析 JSON: %v\n%s", err, out)
+	}
+	if got.Error == nil || got.Error.Code != 5 || got.Content != "" {
+		t.Fatalf("失败对象不符: %+v", got)
+	}
+	if !strings.Contains(errStr, "故障转移") {
+		t.Fatalf("stderr 应含故障转移提示: %q", errStr)
 	}
 }
 

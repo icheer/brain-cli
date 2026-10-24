@@ -1,5 +1,6 @@
 // Package gateway 实现 OpenAI Chat Completions 兼容协议的客户端
-// （/v1/chat/completions + /v1/models）。M0 为非流式请求，M1 换 SSE 传输。
+// （/v1/chat/completions + /v1/models）。
+// 传输层始终走 SSE（TODO.md 第 0 节：防中间层掐断空闲连接、支撑心跳）。
 package gateway
 
 // ContentPart 是 user 消息 content 数组中的块：文本块或图片块。
@@ -20,26 +21,24 @@ type Message struct {
 	Content any    `json:"content"`
 }
 
+// StreamOptions 请求流式响应在末尾携带 usage；个别网关不支持时静默忽略（usage 为 nil）。
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
 // ChatRequest 只声明 brain 用到的字段；采样参数刻意不传（TODO.md 第 0 节已定）。
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
+	Model         string         `json:"model"`
+	Messages      []Message      `json:"messages"`
+	Stream        bool           `json:"stream"`
+	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
 }
 
-// ChatResponse 同样只保留用到的字段；M1 扩展 SSE 增量结构。
-type ChatResponse struct {
-	Choices []Choice `json:"choices"`
-}
-
-// Choice 是一次生成的结果；brain 固定取 choices[0]。
-type Choice struct {
-	Index   int    `json:"index"`
-	Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	} `json:"message"`
-	FinishReason string `json:"finish_reason"`
+// Usage 是一次调用的 token 计量（--json 输出用）。
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // ModelsResponse 是 /v1/models 的响应。
