@@ -14,6 +14,9 @@ dist/
 bin/
 /brain
 
+# 技能目录里 install.sh 下载的二进制
+skills/brain/bin/
+
 # goreleaser
 dist/
 

@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO="icheer/brain-cli"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-TARGET="${BRAIN_INSTALL_DIR:-$DIR/brain-bin}"
+TARGET="${BRAIN_INSTALL_DIR:-$DIR/bin}"
 
 os_name() {
   case "$(uname -s)" in
