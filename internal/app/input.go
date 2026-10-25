@@ -25,7 +25,7 @@ func (e *TooLargeError) Error() string {
 }
 
 // Assemble 按「位置参数 → -f（按出现顺序）→ stdin（若有）」装配正文文本，
-// 多文件以分隔头标记（TODO.md 3.1）。limit 为装配后文本的字节上限。
+// 多文件以分隔头标记（DESIGN.md 3.1）。limit 为装配后文本的字节上限。
 // 全部来源为空时返回空串且不报错——图片（-i）同样是合法输入，
 // 「完全无输入」的判断由调用方结合图片来源进行。
 func Assemble(args []string, files []string, stdin io.Reader, piped bool, limit int64) (string, error) {

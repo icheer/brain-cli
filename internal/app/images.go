@@ -11,7 +11,7 @@ import (
 )
 
 // MaxImageBytes 单张图片上限（解码后 20 MiB）。
-// 图片不计入 max_input_bytes，后者只对装配后的文本计量（TODO.md 3.1）。
+// 图片不计入 max_input_bytes，后者只对装配后的文本计量（DESIGN.md 3.1）。
 const MaxImageBytes = 20 << 20
 
 // PrepareImage 把 -i 参数转成 image_url 的 url：

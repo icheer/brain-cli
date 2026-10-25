@@ -20,7 +20,7 @@ const (
 	actionRetrySame                  // 429/5xx/网络错误：退避后重试同一模型
 )
 
-// AskEngine 在别名 fallback 链上执行「重试 + 故障转移」（TODO.md 3.4 与第 0 节已定范围）。
+// AskEngine 在别名 fallback 链上执行「重试 + 故障转移」（DESIGN.md 3.4 与第 0 节已定范围）。
 // 已定范围：连接失败/超时/429/5xx/404 可切换；401/403 不切；
 // stdout 等完成才输出，任何时点失败都不会污染已输出内容——但 --stream 模式例外，
 // 通过 HasOutput 感知「正文已写出到 stdout」，此后禁止重试与切换（已输出正文永不切）。

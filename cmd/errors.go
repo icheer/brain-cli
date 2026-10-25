@@ -8,7 +8,7 @@ import (
 	"github.com/icheer/brain-cli/internal/gateway"
 )
 
-// exitCodeFor 把网关/传输层错误映射到退出码（TODO.md 3.3）。
+// exitCodeFor 把网关/传输层错误映射到退出码（DESIGN.md 3.3）。
 func exitCodeFor(err error) int {
 	var se *gateway.StatusError
 	if errors.As(err, &se) {

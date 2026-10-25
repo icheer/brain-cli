@@ -1,6 +1,6 @@
 // Package gateway 实现 OpenAI Chat Completions 兼容协议的客户端
 // （/v1/chat/completions + /v1/models）。
-// 传输层始终走 SSE（TODO.md 第 0 节：防中间层掐断空闲连接、支撑心跳）。
+// 传输层始终走 SSE（DESIGN.md 第 0 节：防中间层掐断空闲连接、支撑心跳）。
 package gateway
 
 // ContentPart 是 user 消息 content 数组中的块：文本块或图片块。
@@ -26,7 +26,7 @@ type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
 
-// ChatRequest 只声明 brain 用到的字段；采样参数刻意不传（TODO.md 第 0 节已定）。
+// ChatRequest 只声明 brain 用到的字段；采样参数刻意不传（DESIGN.md 第 0 节已定）。
 // reasoning_effort 是行为开关而非采样参数：-e 显式设置才透传，空则字段缺席（各模型用自身默认）。
 type ChatRequest struct {
 	Model           string         `json:"model"`

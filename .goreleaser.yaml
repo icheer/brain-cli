@@ -1,4 +1,4 @@
-# goreleaser 配置（TODO.md 第 5 节）
+# goreleaser 配置（DESIGN.md 第 5 节）
 # 体积策略：-s -w 剥离符号（实测 ~9MB）；≤1MiB 在 Go+TLS 下不可达（下限 ~6.4MB），
 # 技能分发走「安装器按需下载 + SHA256 校验」（skills/brain/install.sh），不在技能目录内置二进制。
 version: 2

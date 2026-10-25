@@ -16,7 +16,7 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
-  # 跨平台构建冒烟：6 个目标全部要能出产物（TODO.md 第 5 节）
+  # 跨平台构建冒烟：6 个目标全部要能出产物（DESIGN.md 第 5 节）
   cross-build:
     runs-on: ubuntu-latest
     steps:
@@ -35,7 +35,7 @@ jobs:
             done
           done
 
-  # 真实网关 e2e 冒烟（TODO.md 第 5 节；secret 未配置时自动跳过）。
+  # 真实网关 e2e 冒烟（DESIGN.md 第 5 节；secret 未配置时自动跳过）。
   # continue-on-error：网关按 IP 风控，GitHub Actions 机房 IP 可能被临时限制
   # （2026-10-24 实测 403 code=11140，本机正常）——外部依赖故障不应阻塞代码合并信号，
   # 失败仍会在 run 页面显示为警告；网关支持按用户发 key / IP 白名单后可移除此开关。

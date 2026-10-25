@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config 与 TODO.md 2.2 的 config.yaml 一一对应。
+// Config 与 DESIGN.md 2.2 的 config.yaml 一一对应。
 type Config struct {
 	BaseURL               string `yaml:"base_url"`
 	APIKey                string `yaml:"api_key"`
@@ -84,7 +84,7 @@ func Load() (Config, []string, error) {
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
 			return cfg, warnings, &FileError{Path: p, Err: fmt.Errorf("YAML 解析失败: %w", err)}
 		}
-		// 权限检查：含密钥的文件应保持 0600（TODO.md 2.4）
+		// 权限检查：含密钥的文件应保持 0600（DESIGN.md 2.4）
 		if runtime.GOOS != "windows" {
 			if info, statErr := os.Stat(p); statErr == nil && info.Mode().Perm() != 0o600 {
 				warnings = append(warnings, fmt.Sprintf(

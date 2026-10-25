@@ -44,7 +44,7 @@ type streamChunk struct {
 
 // ChatCompletionStream 发起 SSE 请求并累积完整结果。
 // 中途断流返回错误并丢弃已收内容——stdout 等完成才输出，不会污染，
-// 是否换模型重试由 AskEngine 决定（TODO.md 第 0 节 fallback 范围）。
+// 是否换模型重试由 AskEngine 决定（DESIGN.md 第 0 节 fallback 范围）。
 func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDelta DeltaHandler) (*ChatResult, error) {
 	req.Stream = true
 	req.StreamOptions = &StreamOptions{IncludeUsage: true}

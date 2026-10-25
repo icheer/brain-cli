@@ -14,7 +14,7 @@ import (
 	"github.com/icheer/brain-cli/internal/gateway"
 )
 
-// 版本信息由 CI/goreleaser 通过 -ldflags 注入（TODO.md 第 5 节）：
+// 版本信息由 CI/goreleaser 通过 -ldflags 注入（DESIGN.md 第 5 节）：
 //
 //	-X github.com/icheer/brain-cli/cmd.version=1.0.0 -X github.com/icheer/brain-cli/cmd.commit=abc1234
 var (

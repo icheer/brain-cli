@@ -77,7 +77,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 	cfg.BaseURL = baseURL
 
-	// api_key 不设 flag（TODO.md 2.4）；留空则回落 BRAIN_API_KEY 环境变量
+	// api_key 不设 flag（DESIGN.md 2.4）；留空则回落 BRAIN_API_KEY 环境变量
 	apiKey := ask("api_key（输入会回显；留空则使用 BRAIN_API_KEY 环境变量）: ")
 	if apiKey == "" {
 		apiKey = os.Getenv("BRAIN_API_KEY")

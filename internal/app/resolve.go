@@ -20,7 +20,7 @@ func ModelChain(name string, mf config.ModelsFile) ([]string, error) {
 	return []string{name}, nil
 }
 
-// ResolveModel 解析链首位（TODO.md 第 4 节：别名 → 字面模型 ID，ID 交网关裁决）。
+// ResolveModel 解析链首位（DESIGN.md 第 4 节：别名 → 字面模型 ID，ID 交网关裁决）。
 func ResolveModel(name string, mf config.ModelsFile) (string, error) {
 	chain, err := ModelChain(name, mf)
 	if err != nil {

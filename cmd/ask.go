@@ -68,10 +68,10 @@ func init() {
 	askCmd.Flags().BoolVar(&askOpts.showThinking, "show-thinking", false, "思维链走 stderr，stdout 仍只有正文（--stream 时思维链同步增量）")
 }
 
-// heartbeatInterval 心跳间隔（TODO.md 3.2：长推理时的 stderr 进度提示）。
+// heartbeatInterval 心跳间隔（DESIGN.md 3.2：长推理时的 stderr 进度提示）。
 const heartbeatInterval = 15 * time.Second
 
-// askJSON 是 --json 的输出结构（TODO.md 3.2：成败恒定一个对象，Agent 可无条件 jq）。
+// askJSON 是 --json 的输出结构（DESIGN.md 3.2：成败恒定一个对象，Agent 可无条件 jq）。
 type askJSON struct {
 	Content        string         `json:"content"`
 	Thinking       string         `json:"thinking,omitempty"`
@@ -209,7 +209,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 			"没有输入内容：需要位置参数、-f 文件、管道 stdin 或 -i 图片至少其一")
 	}
 
-	// 图片块排在文本块之后（TODO.md 3.1）；纯图时无文本块
+	// 图片块排在文本块之后（DESIGN.md 3.1）；纯图时无文本块
 	parts := make([]gateway.ContentPart, 0, 1+len(askOpts.images))
 	if text != "" {
 		parts = append(parts, gateway.ContentPart{Type: "text", Text: text})
@@ -241,7 +241,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		return nil
 	}
 
-	// 总预算 = timeout_seconds，覆盖全部尝试与退避等待（TODO.md 3.4）
+	// 总预算 = timeout_seconds，覆盖全部尝试与退避等待（DESIGN.md 3.4）
 	budget := time.Duration(cfg.TimeoutSeconds) * time.Second
 	ctx, cancel := context.WithTimeout(cmd.Context(), budget)
 	defer cancel()
@@ -353,7 +353,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		fmt.Fprintf(stderr, "brain: 警告: 模型返回空内容（finish_reason=%s%s）\n", res.FinishReason, note)
 	}
 
-	// 输出阶段：正文/JSON 两个互斥写点，全程序仅此一处写 stdout（TODO.md 3.2）
+	// 输出阶段：正文/JSON 两个互斥写点，全程序仅此一处写 stdout（DESIGN.md 3.2）
 	switch {
 	case askOpts.stream:
 		// 增量已写出，只补齐换行约定
@@ -415,7 +415,7 @@ func redactMessages(msgs []gateway.Message) []gateway.Message {
 	return out
 }
 
-// ensureSingleNewline 保证正文以恰好一个换行结尾（TODO.md 3.2 换行约定）。
+// ensureSingleNewline 保证正文以恰好一个换行结尾（DESIGN.md 3.2 换行约定）。
 func ensureSingleNewline(s string) string {
 	return strings.TrimRight(s, "\n") + "\n"
 }

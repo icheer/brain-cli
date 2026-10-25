@@ -1,4 +1,4 @@
-// Package exitcode 集中定义退出码规范（TODO.md 3.3）。
+// Package exitcode 集中定义退出码规范（DESIGN.md 3.3）。
 // 退出码是宿主 Agent 消费的第一优先级信号，全程序只从这里取值。
 package exitcode
 

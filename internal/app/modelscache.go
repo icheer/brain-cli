@@ -10,7 +10,7 @@ import (
 	"github.com/icheer/brain-cli/internal/gateway"
 )
 
-// modelsCache 是 /v1/models 的本地缓存（os.UserCacheDir，TODO.md 第 4 节）。
+// modelsCache 是 /v1/models 的本地缓存（os.UserCacheDir，DESIGN.md 第 4 节）。
 type modelsCache struct {
 	FetchedAt time.Time `json:"fetched_at"`
 	Models    []string  `json:"models"`
