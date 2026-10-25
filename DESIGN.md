@@ -19,7 +19,7 @@
 | 定位 | 纯咨询/分析外脑，不做 Function Calling |
 | 输出落盘 | 不做 `-o`；统一用 shell 重定向 `> file`（SKILL.md 写明该模式）；Windows 重定向编码出现真实用户反馈再考虑 |
 | `--json` 失败语义 | 无论成败，stdout 恒定输出**一个** JSON 对象（失败时填 `error` 字段），退出码照旧（M1 落地） |
-| 采样参数 | v1 不暴露也不默认传 `temperature` / `max_tokens`，保持纯透传 |
+| 采样参数 | v1 不暴露也不默认传 `temperature` 等采样调优参数；**max_tokens 例外**（2026-10-25 第二轮双外脑评审收敛后修订）——`--max-output-tokens` 作为输出预算控制 opt-in 透传：防思维链吃满输出预算导致空正文、限制长输出费用；0=字段缺席 |
 | models.yaml 缺失 | 可选；缺失时 `-m` 直接按字面模型 ID 处理 |
 | fallback 范围 | 连接失败 / 超时 / 429 / 5xx / 404 可切换；401/403 不切（直接 exit 2）；已输出正文永不切 |
 | base_url 默认值 | 公开 release 不带默认值；缺失 → exit 7 引导 `brain config set`；内部定制走 ldflags 注入（同版本号机制） |
@@ -54,8 +54,8 @@
 - Windows: `%AppData%\brain\`
 - `BRAIN_CONFIG` / `BRAIN_MODELS` 环境变量可指定完整文件路径覆盖。
 
-配置覆盖优先级：`CLI Flags > 环境变量（BRAIN_API_KEY / BRAIN_BASE_URL / BRAIN_TIMEOUT）> config.yaml > 代码内默认值`。
-（base_url 的默认值可编译注入——URL 非机密；密钥绝不注入。）
+配置覆盖优先级：`CLI Flags > 环境变量（BRAIN_API_KEY / BRAIN_BASE_URL / BRAIN_TIMEOUT / BRAIN_DEFAULT_MODEL / BRAIN_USER_AGENT）> config.yaml > 代码内默认值`。
+（base_url 的默认值可编译注入——URL 非机密；密钥绝不注入；BRAIN_DEFAULT_MODEL 使 CI/容器可纯环境变量运行、零 config.yaml。）
 
 ### 2.2 config.yaml 示例
 ```yaml
@@ -112,6 +112,7 @@ aliases:
 - [x] 图片不计入 `max_input_bytes`（只对装配后文本计量）；单图上限 20 MiB（解码后）
 - [x] `-i` 图片块在 content 数组中排在文本块之后；`-s` 可重复，以空行连接
 - [x] `-e / --reasoning-effort <档位>`：推理深度纯透传（第 0 节已定；不设则请求体无此字段，档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
+- [x] `--max-output-tokens <N>`：输出预算（max_tokens）纯透传（第 0 节修订后的例外；0=字段缺席用网关默认，负值 exit 1）
 - [x] `--dry-run`：组装完成后输出最终 messages（单行 JSON，本地图片 data URL 截断展示），不发起网络请求；与 `--json`/`--stream` 互斥
 
 ### 3.2 输出
@@ -152,7 +153,7 @@ aliases:
 - [x] 无 `default_model` 且未传 `-m` → exit 7 + 修复提示
 - [x] `/v1/models` 缓存放 `os.UserCacheDir()/brain/models.json`（与配置目录区分），损坏即弃用重拉
 - [x] `brain ping -m <别名或ID>`：逐模型探测 fallback 链（各发一次极小补全请求；`/v1/models` 列出≠本 key 可用，探测才是硬证据）；链上至少一个可用即通过，主模型挂时 stderr 明示（防静默降级到次优模型）
-- [x] `ping --json` / `models --json`：机器可读输出（ping 成败恒定单对象，error 与 ask --json 同构）
+- [x] `ping --json` / `models --json`：机器可读输出（ping 成败恒定单对象，error 与 ask --json 同构；`ping -m` 时含 `probes` 数组：model / ok / latency_ms / error——逐模型探测结果无需解析 stderr）
 
 ## 5. 分发与工程化
 - [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（配置已过 `goreleaser check`，待首个 tag 全链路验证）
@@ -186,6 +187,9 @@ aliases:
 - **M3**：`-e/--reasoning-effort` 纯透传、`--json` 错误结构扩展、`--quiet`、`--dry-run`、`ping -m` 链探测 + `ping --json`、`init` 别名生成（冷启动闭环）
   - 状态（2026-10-25）：功能完成，单测全绿；来源：双外脑模型交叉评审（fox/claude-fable-5-1 + max/minimax-m3.1-flash）采信 + 用户新增的 reasoning_effort 需求；真实网关 e2e 见下
   - 评审记录：两模型独立提出 `--json` 错误粒度不足（最强共识）；minimax 发现的「SKILL 固定别名 × 最小安装 = 404 冷启动断点」经仓库核实属实并修复；拒绝 `--head`（shell 管道可解，同不做 `-o` 的哲学）；缓办 `--context-file`、`brain log`
+- **M4**：`--max-output-tokens` 输出预算透传、`BRAIN_DEFAULT_MODEL` 环境变量、文档补丁（ping --json probes 字段说明）
+  - 状态（2026-10-25）：完成；来源：第二轮双外脑评审（fox/claude-fable-5-1 + max/minimax-m3.1-flash，均 `-e xhigh`）交叉裁定——`--max-output-tokens` 为两模型唯一收敛项，`BRAIN_DEFAULT_MODEL` 填环境变量全量配置缺口
+  - 评审记录：`--retry-on-empty`（空正文自动降档重试）与 `--max-output-tokens` 部分重叠且静默翻倍耗时，缓办；`-m m1,m2` 内联链 backlog；minimax 的 timeout/重试/SIGINT 全套与 fable 的 ping -m --json「缺口」均为**已实现功能的幻觉**（后者根源是 probes 字段未文档化，已补）——外脑无代码访问权时的过高幻觉率再次证明交叉核对不可省
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 

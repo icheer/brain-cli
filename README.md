@@ -8,7 +8,7 @@
 
 - **Agent-Friendly**：stdout 只输出模型正文，元数据/警告/心跳全走 stderr；管道 / `-f` 多文件 / `-i` 图片多模态输入开箱即用
 - **模型别名路由**：`fast` / `reason` / `coding` / `vision` 别名 + 自动故障转移（重试退避、换链上模型、stderr 提示），Agent 无需记忆模型名
-- **可选推理深度**：`-e low|medium|high|…` 纯透传（不设则各模型用自身默认；档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
+- **可选推理深度与输出预算**：`-e low|medium|high|…`、`--max-output-tokens N` 纯透传（不设则各模型/网关默认；档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - **可解析**：退出码 0-7 / 130 全量语义；`--json` 成败恒定输出单对象（`jq` 无条件解析，`error.code` 与退出码一致）
 - **健壮传输**：SSE 长连接（防中间层空闲断连）+ stderr 15s 心跳（本地进度显示，不产生网络流量）+ 总预算控制（重试也吃同一个 deadline）
 - **无状态**：多轮上下文由调用方拼接
@@ -46,7 +46,7 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 
 ## 状态与路线
 
-**:rocket: v0.3.0 已发布**（M0–M3）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.4.0 已发布**（M0–M4）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -54,3 +54,4 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 | M1 | SSE 传输 + 心跳 + fallback/重试 + `--json` + `brain ping` + 分发流水线 | ✅ 完成 |
 | M2 | `--stream` / `--show-thinking` / `brain init` | ✅ 完成（Homebrew 待建 tap 仓库） |
 | M3 | `-e` 推理深度透传 / `--json` 错误扩展（type/retryable/upstream_status/attempted_models）/ `--quiet` / `--dry-run` / `ping -m` 链探测 / `init` 别名生成 | ✅ 完成 |
+| M4 | `--max-output-tokens` 输出预算透传 / `BRAIN_DEFAULT_MODEL` 环境变量 | ✅ 完成 |

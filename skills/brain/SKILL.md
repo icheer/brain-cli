@@ -69,6 +69,7 @@ brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
 - **长推理**：每 15s stderr 输出心跳（`waiting for model… 45s | ~1.2k chars`）；stderr 的「故障转移 / 重试」提示不用管，工具会自动换别名链上的下一模型
 - **宿主合并流**：若宿主把 stdout/stderr 合并进同一输出，加 `--quiet`（关掉心跳/耗时/转移提示，警告与错误保留，stdout 不受影响）
 - **调试输入组装**：`--dry-run` 输出最终将发送的 messages（单行 JSON，不发请求不花钱），核对 -f 顺序/管道拼接/-s 生效
+- **输出预算**：`--max-output-tokens N` 纯透传——限制长输出省 token；反向用法：空正文（思维链吃满预算）时调大它，给思维链+正文都留够预算
 - **退出码优先读**：0 成功；1 用法错误；2 认证失败（检查 api_key，勿重试）；3 限流耗尽（稍后再试）；4 超时（可换 fast 模型重试）；5 上游错误（stderr 里「相近的可用模型」提示可直接换模型重试）；6 输入超限（拆分后重试）；7 配置缺失（先修复）
 - stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
 - `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
