@@ -128,7 +128,7 @@ func TestInitEnvKeyFallback(t *testing.T) {
 	t.Setenv("BRAIN_MODELS", filepath.Join(dir, "models.yaml"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
 
-	stdin = strings.NewReader("https://gw.example.com/v1\n\nfast\n") // api_key 留空 → 用环境变量
+	stdin = strings.NewReader("https://gw.example.com/v1\n\nfast\nn\n") // api_key 留空 → 用环境变量；末行 n 跳过别名向导
 	t.Cleanup(func() { stdin = os.Stdin })
 
 	code, _, _ := runBrain("init")

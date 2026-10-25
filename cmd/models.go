@@ -97,6 +97,10 @@ func runModels(cmd *cobra.Command, _ []string) error {
 			}
 		}
 		fmt.Fprintln(stdout)
+	} else {
+		// 冷启动提示：SKILL.md 模板用 -m fast 等别名，未配置时会按字面模型 ID 发出而 404
+		fmt.Fprintln(stdout, "别名：未配置 models.yaml（brain init 可生成 fast/reason/coding/vision 映射；未配置时 -m 按字面模型 ID 处理）")
+		fmt.Fprintln(stdout)
 	}
 	fmt.Fprintf(stdout, "可用模型（/v1/models，%d 个%s）:\n", len(list), cacheSuffix(fromCache))
 	for _, m := range list {

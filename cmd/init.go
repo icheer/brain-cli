@@ -2,14 +2,19 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/icheer/brain-cli/internal/config"
 	"github.com/icheer/brain-cli/internal/exitcode"
+	"github.com/icheer/brain-cli/internal/gateway"
 )
 
 var initOpts struct {
@@ -28,7 +33,8 @@ var initCmd = &cobra.Command{
 
 base_url 只要是 OpenAI 兼容 API 即可，不限于网关（如 https://api.openai.com/v1）。
 api_key 刻意不设 flag（避免进入 shell history / ps 输出）：
-交互输入，或留空后由 BRAIN_API_KEY 环境变量提供。`,
+交互输入，或留空后由 BRAIN_API_KEY 环境变量提供。
+随后可选生成 models.yaml 别名（fast/reason/coding/vision，拉网关模型清单做选单），`,
 	RunE: runInit,
 }
 
@@ -93,8 +99,114 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err := config.Save(cfg); err != nil {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
-	mp, _ := config.ModelsPath()
 	fmt.Fprintf(stdout, "已写入 %s（权限 0600）\n", p)
-	fmt.Fprintf(stdout, "下一步：brain ping 自检；别名映射可参考仓库 models.example.yaml 放到 %s\n", mp)
+
+	// 别名生成：SKILL.md 模板依赖 fast/reason/coding/vision，缺失时 -m 别名会按
+	// 字面模型 ID 发出而 404（最小安装的第一跳断点，2026-10-25 外脑评审证实）
+	mp, err := config.ModelsPath()
+	if err != nil {
+		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+	}
+	if _, statErr := os.Stat(mp); statErr == nil {
+		fmt.Fprintf(stdout, "models.yaml 已存在（%s），跳过别名生成（brain config edit 可修改）\n", mp)
+		return nil
+	}
+	if ans := ask("生成别名映射 fast/reason/coding/vision？[Y/n] "); strings.EqualFold(ans, "n") {
+		fmt.Fprintf(stdout, "已跳过。别名映射可参考仓库 models.example.yaml 放到 %s\n", mp)
+		return nil
+	}
+	if err := initAliases(cmd.Context(), in, stdout, stderr, cfg, mp); err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "下一步：brain ping 自检（brain ping -m <别名> 可逐模型探测链可用性）")
 	return nil
+}
+
+// aliasDefs 标准别名及场景标注（与 models.example.yaml / SKILL.md 模板一致）。
+var aliasDefs = []struct{ name, use string }{
+	{"fast", "快速问答、简单总结"},
+	{"reason", "复杂推理、方案交叉验证"},
+	{"coding", "代码审查、重构建议"},
+	{"vision", "图表/截图解析（需多模态模型）"},
+}
+
+// initAliases 交互生成 models.yaml：拉取 /v1/models 做选单（不可达时允许直接输入 ID），
+// 每个别名可输序号或完整 ID，多个（逗号/空格分隔）组成 fallback 链，回车跳过。
+// in 复用 runInit 的 bufio.Reader——对同一底层 stdin 新建 Reader 会因缓冲已耗尽而瞬间 EOF。
+func initAliases(ctx context.Context, in *bufio.Reader, stdout, stderr io.Writer, cfg config.Config, mp string) error {
+	askLine := func(prompt string) string {
+		fmt.Fprint(stdout, prompt)
+		line, _ := in.ReadString('\n')
+		return strings.TrimSpace(line)
+	}
+
+	var list []string
+	g := gateway.New(cfg.BaseURL, cfg.APIKey, 10*time.Second)
+	if l, err := g.ListModels(ctx); err != nil {
+		fmt.Fprintf(stdout, "网关模型清单不可达（%v）：可直接粘贴完整模型 ID\n", err)
+	} else {
+		list = l
+		const showMax = 40
+		fmt.Fprintf(stdout, "网关可用模型（%d 个，仅列前 %d；序号或完整 ID 均可）：\n", len(list), showMax)
+		for i, m := range list {
+			if i >= showMax {
+				fmt.Fprintf(stdout, "  …（其余 %d 个见 brain models）\n", len(list)-showMax)
+				break
+			}
+			fmt.Fprintf(stdout, "  %2d. %s\n", i+1, m)
+		}
+	}
+
+	aliases := map[string]config.Alias{}
+	for _, d := range aliasDefs {
+		input := askLine(fmt.Sprintf("%s（%s）→ ", d.name, d.use))
+		if models := pickModels(input, list); len(models) > 0 {
+			aliases[d.name] = config.Alias{Models: models, Use: d.use}
+		}
+	}
+	if len(aliases) == 0 {
+		fmt.Fprintln(stdout, "未选择任何别名，跳过 models.yaml（-m 按字面模型 ID 处理）")
+		return nil
+	}
+	if err := config.SaveModels(config.ModelsFile{Aliases: aliases}); err != nil {
+		return exitcode.Fail(stderr, exitcode.Usage, "写入 models.yaml 失败: %v", err)
+	}
+	fmt.Fprintf(stdout, "已写入 %s（别名 %d 个）\n", mp, len(aliases))
+
+	// 闭环：没设 default_model 时若配出了 fast，顺手设为默认
+	if cfg.DefaultModel == "" {
+		if _, ok := aliases["fast"]; ok {
+			if ans := askLine("把 default_model 设为 fast？[Y/n] "); !strings.EqualFold(ans, "n") {
+				cfg.DefaultModel = "fast"
+				if err := config.Save(cfg); err != nil {
+					return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+				}
+				fmt.Fprintln(stdout, "default_model 已设为 fast")
+			}
+		}
+	}
+	return nil
+}
+
+// pickModels 解析用户输入：序号（对网关清单）或完整模型 ID，逗号/空格分隔多个。
+func pickModels(input string, list []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	split := func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '，' || r == '、'
+	}
+	for _, tok := range strings.FieldsFunc(input, split) {
+		var m string
+		if n, err := strconv.Atoi(tok); err == nil && list != nil && n >= 1 && n <= len(list) {
+			m = list[n-1] // 序号按显示顺序（ListModels 已排序）
+		} else {
+			m = tok
+		}
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
 }

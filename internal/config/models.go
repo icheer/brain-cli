@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -39,4 +40,28 @@ func LoadModels() (ModelsFile, error) {
 		return mf, err
 	}
 	return mf, nil
+}
+
+// SaveModels 原子写入 models.yaml（不含密钥，0644，可共享；brain init 生成别名用）。
+func SaveModels(mf ModelsFile) error {
+	p, err := ModelsPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(mf)
+	if err != nil {
+		return err
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

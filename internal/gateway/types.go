@@ -27,11 +27,13 @@ type StreamOptions struct {
 }
 
 // ChatRequest 只声明 brain 用到的字段；采样参数刻意不传（TODO.md 第 0 节已定）。
+// reasoning_effort 是行为开关而非采样参数：-e 显式设置才透传，空则字段缺席（各模型用自身默认）。
 type ChatRequest struct {
-	Model         string         `json:"model"`
-	Messages      []Message      `json:"messages"`
-	Stream        bool           `json:"stream"`
-	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
+	Model           string         `json:"model"`
+	Messages        []Message      `json:"messages"`
+	Stream          bool           `json:"stream"`
+	StreamOptions   *StreamOptions `json:"stream_options,omitempty"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
 }
 
 // Usage 是一次调用的 token 计量（--json 输出用）。

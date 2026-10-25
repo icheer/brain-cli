@@ -29,6 +29,7 @@ type AskEngine struct {
 	Stderr    io.Writer
 	RetryMax  int         // 同一模型最大重试次数（不含首次）
 	HasOutput func() bool // --stream 场景：返回 true 表示已有正文写到 stdout
+	Attempted []string    // 已尝试的模型（按顺序），供 --json 的 attempted_models
 }
 
 // Ask 依次尝试链上模型，返回结果与实际使用的模型。
@@ -38,6 +39,7 @@ func (e *AskEngine) Ask(ctx context.Context, chain []string,
 ) (*gateway.ChatResult, string, error) {
 	var lastErr error
 	for i, model := range chain {
+		e.Attempted = append(e.Attempted, model)
 		if i > 0 {
 			fmt.Fprintf(e.Stderr, "brain: 故障转移 %s → %s（%s）\n", chain[i-1], model, shortErr(lastErr))
 		}
