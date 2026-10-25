@@ -8,6 +8,7 @@
 
 - **Agent-Friendly**：stdout 只输出模型正文，元数据/警告/心跳全走 stderr；管道 / `-f` 多文件 / `-i` 图片多模态输入开箱即用
 - **模型别名路由**：`fast` / `reason` / `coding` / `vision` 别名 + 自动故障转移（重试退避、换链上模型、stderr 提示），Agent 无需记忆模型名
+- **可选推理深度**：`-e low|medium|high|…` 纯透传（不设则各模型用自身默认；档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - **可解析**：退出码 0-7 / 130 全量语义；`--json` 成败恒定输出单对象（`jq` 无条件解析，`error.code` 与退出码一致）
 - **健壮传输**：SSE 长连接（防中间层空闲断连）+ stderr 15s 心跳（本地进度显示，不产生网络流量）+ 总预算控制（重试也吃同一个 deadline）
 - **无状态**：多轮上下文由调用方拼接
@@ -38,7 +39,7 @@ brain config set default_model gpt-5.6                # 可选；别名映射参
 
 # 第一问
 brain ping
-brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID
+brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID；-e low/medium/high… 可调推理深度（可选）
 ```
 
 给 Agent 用：把 `skills/brain/` 复制或链接进 `.claude/skills/`（或 `.agents/skills/`），SKILL.md 会引导宿主 Agent 何时、如何、何时不调用 brain。

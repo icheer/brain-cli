@@ -29,6 +29,8 @@
 | 技能分发体积 | 技能目录不内置二进制（Go+TLS 实测下限 ~6.4MB，≤1MiB 不可达）；携带 install.sh 从 Release 按需下载 + SHA256 校验；Release 统一 `-s -w` 剥离 + 全平台 tar.gz |
 | 流内错误事件 | 真实网关（one-api 系）会以 HTTP 200 + `data:{"error":{code}}` 回错；按其 code 转成 StatusError 参与分类（404/model_not_found → 立即换模型） |
 | 空正文语义 | 正文为空仍 exit 0 + stderr 警告（含 finish_reason 与思维链长度提示）；思维链只在 `--json` 的 thinking 字段提供 |
+| reasoning_effort | opt-in 纯透传：`-e/--reasoning-effort` 设置才携带该字段；不设时字段缺席、各模型用自身默认；不校验枚举；不做厂商方言翻译（网关职责——实测网关已译 Anthropic 方言） |
+| `--json` 错误结构 | error 对象扩展 `type`（auth/model_not_found/rate_limited/timeout/upstream/network/invalid_request/config_missing/input_too_large/usage/interrupted）、`retryable`、`upstream_status`、`attempted_models`；纯增量，code/message 语义不变 |
 
 ## 1. 目标与非目标
 
@@ -87,7 +89,7 @@ aliases:
 
 ### 2.4 配置管理命令与密钥安全
 - [x] `brain config path | get <key> | set <key> <value> | list | edit`
-- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）
+- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）；可选交互生成 models.yaml 别名（拉 /v1/models 做选单，序号或完整 ID 均可，多个组成 fallback 链）——修复最小安装下 SKILL 模板别名 404 的冷启动断点（2026-10-25 外脑评审证实该断点）
 - [x] 密钥读取顺序：环境变量 > config.yaml；文件权限非 0600 时 stderr 警告
 - [x] 不提供 `--api-key` flag（避免进入 shell history / `ps` 输出；一次性使用走环境变量）
 
@@ -110,6 +112,8 @@ aliases:
 - [x] `-f` 文件须为合法 UTF-8 文本（二进制/PDF → exit 1，明确报错不静默透传）；读取失败（不存在/是目录/无权限）归 exit 1；读取流式限长（防 `/dev/zero` 类特殊文件 OOM）
 - [x] 图片不计入 `max_input_bytes`（只对装配后文本计量）；单图上限 20 MiB（解码后）
 - [x] `-i` 图片块在 content 数组中排在文本块之后；`-s` 可重复，以空行连接
+- [x] `-e / --reasoning-effort <档位>`：推理深度纯透传（第 0 节已定；不设则请求体无此字段，档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
+- [x] `--dry-run`：组装完成后输出最终 messages（单行 JSON，本地图片 data URL 截断展示），不发起网络请求；与 `--json`/`--stream` 互斥
 
 ### 3.2 输出
 - [x] **stdout**：只输出模型正文文本；默认等传输完成后一次性打印
@@ -121,6 +125,7 @@ aliases:
 - [x] stdout 单一写点：全程序只允许一处代码写 stdout，配 golden test 逐字节守护
 - [x] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空，code 与退出码一致），退出码照旧，Agent 可无条件 jq 解析
 - [x] 空正文处理：exit 0 + stderr 警告（finish_reason 与思维链长度提示）
+- [x] `--quiet`：关闭 stderr 心跳/耗时/转移提示（警告与错误保留；供宿主把 stdout/stderr 合并进同一输出的场景）
 
 ### 3.3 退出码规范（Agent 消费的第一优先级信号）
 | code | 含义 |
@@ -147,6 +152,8 @@ aliases:
 - [x] `brain ping`：自检连通性 / 鉴权 / 默认模型可用性（SKILL.md 引导 Agent 第一步先跑它）
 - [x] 无 `default_model` 且未传 `-m` → exit 7 + 修复提示
 - [x] `/v1/models` 缓存放 `os.UserCacheDir()/brain/models.json`（与配置目录区分），损坏即弃用重拉
+- [x] `brain ping -m <别名或ID>`：逐模型探测 fallback 链（各发一次极小补全请求；`/v1/models` 列出≠本 key 可用，探测才是硬证据）；链上至少一个可用即通过，主模型挂时 stderr 明示（防静默降级到次优模型）
+- [x] `ping --json` / `models --json`：机器可读输出（ping 成败恒定单对象，error 与 ask --json 同构）
 
 ## 5. 分发与工程化
 - [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（配置已过 `goreleaser check`，待首个 tag 全链路验证）
@@ -162,6 +169,8 @@ aliases:
 - [x] 命令模板：管道日志分析、多文件审查（`-f` 多次）、多图比对（`-i` 多次）、`-s` 角色约束
 - [x] 工程注意事项：宿主超时设置、按退出码决定重试还是换模型、用 `--json` 核对 usage
 - [x] 验证指引：外脑输出后的自检与落地流程
+- [x] 推理深度暗示：常见 5 档 low/medium/high/xhigh/max、智谱 GLM-5.3 仅 low/high/max 3 档；深度推演 `-e high`（更深可用 xhigh）、快问快答 `-e low`、不确定时先不设（各模型用自身默认）；`finish_reason=length` 空正文时 `-e low` 降档重试
+- [x] 别名冷启动指引：别名来自本机 models.yaml（`brain init` 可生成）；未配置时 `-m fast` 会按字面模型 ID 发出而 404，用 `brain models` 查 ID 直调
 - [ ] frontmatter description 的**触发命中率**在真实宿主（Claude Code + 至少一个其他宿主）实测：该触发时触发、不该触发时克制，并据此精简 description（2026-10-24 外脑评审新增：不同宿主消费 skill 的方式不同，密集描述的效果未知，这是产品成立的前提）
 
 ## 7. 里程碑
@@ -175,6 +184,9 @@ aliases:
   - 真实网关经验：错误可能以 503+model_not_found 或 HTTP 200 流内 `data:{"error"}` 出现，均已按第 0 节分类处理
 - **M2**：`--stream`、`--show-thinking`、`brain init` 交互引导、Homebrew tap
   - 状态（2026-10-24）：**前三项完成**（单测全绿 + 真实网关 e2e：流式增量/思维链 stderr 分流/init 向导含环境变量回落）；Homebrew 需先建 tap 仓库，暂缓
+- **M3**：`-e/--reasoning-effort` 纯透传、`--json` 错误结构扩展、`--quiet`、`--dry-run`、`ping -m` 链探测 + `ping --json`、`init` 别名生成（冷启动闭环）
+  - 状态（2026-10-25）：功能完成，单测全绿；来源：双外脑模型交叉评审（fox/claude-fable-5-1 + max/minimax-m3.1-flash）采信 + 用户新增的 reasoning_effort 需求；真实网关 e2e 见下
+  - 评审记录：两模型独立提出 `--json` 错误粒度不足（最强共识）；minimax 发现的「SKILL 固定别名 × 最小安装 = 404 冷启动断点」经仓库核实属实并修复；拒绝 `--head`（shell 管道可解，同不做 `-o` 的哲学）；缓办 `--context-file`、`brain log`
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 

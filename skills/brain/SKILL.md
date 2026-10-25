@@ -19,9 +19,12 @@ bash "$(dirname "$SKILL_DIR")/install.sh"   # 或仓库 skills/brain/install.sh
 
 ```bash
 brain ping    # 连通性 / 鉴权 / 默认模型 三项自检
+brain ping -m reason   # 可选：逐模型探测别名链实际可用性（/v1/models 列出≠本 key 可用）
 ```
 
 stdout 逐行输出 OK；按 exit code 处理失败（7=配置缺失，按 stderr 提示修复）。
+
+注意：`-m` 别名来自本机 models.yaml（`brain init` 可生成）。未配置时 `-m fast` 等会按字面模型 ID 发出而 404——用 `brain models` 查看可用模型，改用模型 ID 直调。
 
 ## 何时调用
 
@@ -48,6 +51,11 @@ brain ask -m coding -s "你是严格的审查员，只报最严重的问题" -f 
 # 图片解析（本地路径或 URL，可多次）
 brain ask -m vision -i chart.png "这张图的数据趋势说明什么"
 
+# 推理深度（可选，纯透传）：深度推演/交叉验证用 -e high（更深档依模型而定，如 xhigh）；
+# 快速问答/分类用 -e low。档位因模型而异——常见 low/medium/high/xhigh/max 五档，
+# 智谱 GLM-5.3 仅 low/high/max 三档；设置模型不支持的档位会 400，不确定时先不设
+brain ask -m reason -e high "推演方案A的风险"
+
 # 长输出落盘，避免塞爆上下文（按需再 Read/Grep 检索）
 brain ask -m reason "详细推演方案A的风险" > /tmp/brain-out.md
 
@@ -59,9 +67,11 @@ brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
 
 - **超时**：宿主 Bash 工具超时必须大于 brain 超时（如 brain 300s → Bash 360s+），否则进程会被宿主先杀掉
 - **长推理**：每 15s stderr 输出心跳（`waiting for model… 45s | ~1.2k chars`）；stderr 的「故障转移 / 重试」提示不用管，工具会自动换别名链上的下一模型
+- **宿主合并流**：若宿主把 stdout/stderr 合并进同一输出，加 `--quiet`（关掉心跳/耗时/转移提示，警告与错误保留，stdout 不受影响）
+- **调试输入组装**：`--dry-run` 输出最终将发送的 messages（单行 JSON，不发请求不花钱），核对 -f 顺序/管道拼接/-s 生效
 - **退出码优先读**：0 成功；1 用法错误；2 认证失败（检查 api_key，勿重试）；3 限流耗尽（稍后再试）；4 超时（可换 fast 模型重试）；5 上游错误（stderr 里「相近的可用模型」提示可直接换模型重试）；6 输入超限（拆分后重试）；7 配置缺失（先修复）
 - stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
-- `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型，或改小问题粒度重试
+- `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
 
 ## 输出落地
