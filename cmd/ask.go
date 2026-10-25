@@ -29,6 +29,7 @@ type askOptions struct {
 	system          []string
 	timeout         int
 	maxInputBytes   int64
+	maxOutputTokens int
 	reasoningEffort string
 	jsonOut         bool
 	stream          bool
@@ -61,6 +62,7 @@ func init() {
 	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0, "整体超时秒数（含重试与故障转移，覆盖 config）")
 	askCmd.Flags().Int64Var(&askOpts.maxInputBytes, "max-input-bytes", 0, "输入文本上限字节数（覆盖 config）")
 	askCmd.Flags().StringVarP(&askOpts.reasoningEffort, "reasoning-effort", "e", "", "推理深度纯透传（档位因模型而异，如 low/medium/high/xhigh/max；不设则用各模型默认）")
+	askCmd.Flags().IntVar(&askOpts.maxOutputTokens, "max-output-tokens", 0, "输出预算（max_tokens）纯透传：防思维链吃满输出预算、限制长输出；0=不传用网关默认")
 	askCmd.Flags().BoolVarP(&askOpts.quiet, "quiet", "q", false, "静默 stderr：关闭心跳/耗时/转移提示（警告与错误保留）")
 	askCmd.Flags().BoolVar(&askOpts.dryRun, "dry-run", false, "只组装并输出最终将发送的 messages（单行 JSON），不发起网络请求")
 	askCmd.Flags().BoolVar(&askOpts.jsonOut, "json", false, "单行 JSON 输出（成败恒定一个对象，含 usage/latency/error）")
@@ -73,15 +75,16 @@ const heartbeatInterval = 15 * time.Second
 
 // askJSON 是 --json 的输出结构（DESIGN.md 3.2：成败恒定一个对象，Agent 可无条件 jq）。
 type askJSON struct {
-	Content        string         `json:"content"`
-	Thinking       string         `json:"thinking,omitempty"`
-	Model          string         `json:"model"`
-	Requested      string         `json:"requested_model"`
-	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
-	Usage          *gateway.Usage `json:"usage"`
-	LatencyMs      int64          `json:"latency_ms"`
-	FinishReason   string         `json:"finish_reason"`
-	Error          *askJSONError  `json:"error"`
+	Content          string         `json:"content"`
+	Thinking         string         `json:"thinking,omitempty"`
+	Model            string         `json:"model"`
+	Requested        string         `json:"requested_model"`
+	ReasoningEffort  string         `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens  int            `json:"max_output_tokens,omitempty"`
+	Usage            *gateway.Usage `json:"usage"`
+	LatencyMs        int64          `json:"latency_ms"`
+	FinishReason     string         `json:"finish_reason"`
+	Error            *askJSONError  `json:"error"`
 }
 
 // askJSONError 扩展字段（第 0 节：纯增量，code/message 语义不变）：
@@ -109,6 +112,9 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	if askOpts.dryRun && askOpts.jsonOut {
 		return exitcode.Fail(stderr, exitcode.Usage, "--dry-run 与 --json 互斥（--dry-run 自身输出单行 JSON）")
+	}
+	if askOpts.maxOutputTokens < 0 {
+		return exitcode.Fail(stderr, exitcode.Usage, "--max-output-tokens 应为正整数")
 	}
 
 	// --json：无论成败（含配置/输入错误），stdout 恒定输出一个 JSON 对象。
@@ -183,6 +189,9 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	if askOpts.reasoningEffort != "" {
 		payload.ReasoningEffort = askOpts.reasoningEffort
 	}
+	if askOpts.maxOutputTokens > 0 {
+		payload.MaxOutputTokens = askOpts.maxOutputTokens
+	}
 
 	mf, err := config.LoadModels()
 	if err != nil {
@@ -234,6 +243,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 			Requested:       name,
 			Chain:           chain,
 			ReasoningEffort: askOpts.reasoningEffort,
+			MaxOutputTokens: askOpts.maxOutputTokens,
 			TextBytes:       int64(len(text)),
 			Messages:        redactMessages(messages),
 		})
@@ -314,7 +324,12 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 
 	res, used, err := engine.Ask(ctx, chain,
 		func(m string) gateway.ChatRequest {
-			return gateway.ChatRequest{Model: m, Messages: messages, ReasoningEffort: askOpts.reasoningEffort}
+			return gateway.ChatRequest{
+				Model:           m,
+				Messages:        messages,
+				ReasoningEffort: askOpts.reasoningEffort,
+				MaxTokens:       askOpts.maxOutputTokens,
+			}
 		},
 		onDelta)
 	hbStop()
@@ -386,6 +401,7 @@ type dryRunOut struct {
 	Requested       string            `json:"requested_model"`
 	Chain           []string          `json:"chain"`
 	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens int               `json:"max_output_tokens,omitempty"`
 	TextBytes       int64             `json:"text_bytes"`
 	Messages        []gateway.Message `json:"messages"`
 }

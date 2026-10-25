@@ -107,6 +107,9 @@ func Load() (Config, []string, error) {
 	if v := os.Getenv("BRAIN_USER_AGENT"); v != "" {
 		cfg.UserAgent = v
 	}
+	if v := os.Getenv("BRAIN_DEFAULT_MODEL"); v != "" {
+		cfg.DefaultModel = v
+	}
 	if v := os.Getenv("BRAIN_TIMEOUT"); v != "" {
 		n, perr := strconv.Atoi(v)
 		if perr != nil {
