@@ -7,7 +7,7 @@
 ## 开发上下文入口
 
 - **先读 [DESIGN.md](DESIGN.md) 第 0 节「已定决策」**——两轮设计评审敲定的结论，不要重新讨论已定项
-- 当前状态：**v0.5.0 已发布（M0–M5）**——含配置单文件化（breaking：`BRAIN_MODELS` 删除，别名在 config.yaml 的 aliases 段）；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
+- 当前状态：**v0.5.0 已发布（M0–M5）**；**M6 界面双语完成待发版**（CLI 全量 zh/en：`BRAIN_LANG`/locale/UTC+8 检测链，`internal/i18n` 的 T/Tf 双串直书；README 英文主版 + README.zh-CN.md 互链）；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
 - 架构、配置文件格式、退出码表、超时重试策略等规范全部在 DESIGN.md 内，以它为准
 
 ## 铁律

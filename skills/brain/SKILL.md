@@ -74,6 +74,7 @@ brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
 - stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
 - `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
+- **stderr 文案语言随环境自动中英切换**（`BRAIN_LANG` / locale / UTC+8 时区）；你的判断一律以退出码与 `--json` 字段为准，不要匹配 stderr 文案
 
 ## 输出落地
 

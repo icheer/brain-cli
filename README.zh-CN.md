@@ -1,5 +1,7 @@
 # brain-cli
 
+[English](README.md) | **简体中文**
+
 > 仓库名 `brain-cli`，二进制命令名为 **`brain`**。
 
 `brain` 是一个给宿主 Agent（Claude Code、Gemini CLI 等）当"外脑"的极简命令行工具：通过 OpenAI Chat Completions 兼容协议调用大模型网关，负责一次高质量的咨询/分析调用，把结果干净地交还给 Agent。
@@ -12,6 +14,7 @@
 - **可解析**：退出码 0-7 / 130 全量语义；`--json` 成败恒定输出单对象（`jq` 无条件解析，`error.code` 与退出码一致）
 - **健壮传输**：SSE 长连接（防中间层空闲断连）+ stderr 15s 心跳（本地进度显示，不产生网络流量）+ 总预算控制（重试也吃同一个 deadline）
 - **无状态**：多轮上下文由调用方拼接
+- **中英双语界面**：按 `BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（`zh*` → 中文，其他已设值 → 英文）> 时区兜底（UTC+8 → 中文）自动选择；随时 `BRAIN_LANG=zh|en` 强制
 - **跨平台**：darwin / linux / windows × amd64 / arm64，goreleaser 发布，静态编译约 9MB
 
 ## 30 秒开始
@@ -62,7 +65,7 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 
 ## 状态与路线
 
-**:rocket: v0.5.0 已发布**（M0–M5）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.6.0 已发布**（M0–M6）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -72,3 +75,4 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 | M3 | `-e` 推理深度透传 / `--json` 错误扩展（type/retryable/upstream_status/attempted_models）/ `--quiet` / `--dry-run` / `ping -m` 链探测 / `init` 别名生成 | ✅ 完成 |
 | M4 | `--max-output-tokens` 输出预算透传 / `BRAIN_DEFAULT_MODEL` 环境变量 | ✅ 完成 |
 | M5 | 配置单文件化：config.yaml + models.yaml 合并（breaking——别名进 aliases 段，`BRAIN_MODELS` 删除） | ✅ 完成 |
+| M6 | 界面双语（zh/en）：locale / `BRAIN_LANG` / UTC+8 时区检测；README 中英双语 | ✅ 完成 |

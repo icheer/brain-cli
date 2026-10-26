@@ -31,13 +31,14 @@
 | 空正文语义 | 正文为空仍 exit 0 + stderr 警告（含 finish_reason 与思维链长度提示）；思维链只在 `--json` 的 thinking 字段提供 |
 | reasoning_effort | opt-in 纯透传：`-e/--reasoning-effort` 设置才携带该字段；不设时字段缺席、各模型用自身默认；不校验枚举；不做厂商方言翻译（网关职责——实测网关已译 Anthropic 方言） |
 | `--json` 错误结构 | error 对象扩展 `type`（auth/model_not_found/rate_limited/timeout/upstream/network/invalid_request/config_missing/input_too_large/usage/interrupted）、`retryable`、`upstream_status`、`attempted_models`；纯增量，code/message 语义不变 |
+| 界面语言 | 中英双语（zh/en）：`BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（zh* → 中文，其他已设值 → 英文）> 时区偏移兜底（UTC+8 → 中文，否则英文；+8 区内无夏令时，按偏移判断免维护时区名清单）；语言随环境每次动态读取；stdout 模型正文永不翻译；Agent 分支以退出码与 --json 字段为准，不依赖 stderr 文案语言 |
 
 ## 1. 目标与非目标
 
 **目标**
 - 给宿主 Agent 用的"外脑"：低摩擦、可脚本化、输出可解析、行为可预期。
 - 开箱即用：一次 `brain config set`（或 `brain init`）后立即可用。
-- 与宿主自带 subagent 机制**互补而非替代**：subagent = 同模型+工具+独立上下文（适合仓库级探索）；brain = 跨厂商模型+纯文本进出（适合独立第二意见，同源自我复核检不出系统性偏差）。对比表见 README「brain 与宿主 subagent 的区别」。
+- 与宿主自带 subagent 机制**互补而非替代**：subagent = 同模型+工具+独立上下文（适合仓库级探索）；brain = 跨厂商模型+纯文本进出（适合独立第二意见，同源自我复核检不出系统性偏差）。对比表见 README（中/英两版均有该节）。
 
 **非目标（写入 README，防止范围蔓延）**
 - 不做 Function Calling，不替宿主 Agent 执行工具。
@@ -196,6 +197,9 @@ aliases:
 - **M5**：配置单文件化（config.yaml + models.yaml 合并，breaking）
   - 状态（2026-10-26）：完成——`BRAIN_MODELS` 删除、别名进 config.yaml aliases 段（omitempty，无该段行为不变）、`init` 单文件向导且覆盖重建默认保留别名、`config path` 单行输出；决策记录见第 0 节「配置文件布局」行
   - 用户侧迁移（仅本机一户）：把旧 models.yaml 的 aliases 段并入 config.yaml 后删除前者
+- **M6**：界面双语（zh/en）
+  - 状态（2026-10-26）：完成——CLI 全量（help/flag/错误/stderr/向导）+ README 中英双语（README.md 英文主版 + README.zh-CN.md，顶部互链）；检测链见第 0 节「界面语言」行；实现为 `internal/i18n` 的 `T(zh,en)/Tf` 双串直书，漏译即编译不出而非运行时缺文案；测试经 TestMain 钉 BRAIN_LANG=zh 保证既有断言稳定，英文路径有锁定测试
+  - 设计取舍：拒绝按时区独判（语言是用户声明不是地理位置——欧美时区的中国开发者是核心受众）；时区仅作 locale 全空时的兜底且只认 UTC+8 偏移
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 
