@@ -56,18 +56,18 @@ brain ask -m vision -i chart.png "这张图的数据趋势说明什么"
 # 推理深度（可选，纯透传）：深度推演/交叉验证用 -e high（更深档依模型而定，如 xhigh）；
 # 快速问答/分类用 -e low。档位因模型而异——常见 low/medium/high/xhigh/max 五档，
 # 智谱 GLM-5.3 仅 low/high/max 三档；设置模型不支持的档位会 400，不确定时先不设
-brain ask -m reason -e high "推演方案A的风险"
+brain ask -m reason -e high -f plan.md "推演这个方案的失效模式"
 
 # 长输出落盘，避免塞爆上下文（按需再 Read/Grep 检索）
-brain ask -m reason "详细推演方案A的风险" > /tmp/brain-out.md
+brain ask -m reason -f plan.md "详细推演这个方案的失效模式" > /tmp/brain-out.md
 
 # 需要元数据（usage/latency/finish_reason/思维链）时用 --json，stdout 恒定单对象
-brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
+brain ask -m reason -f plan.md --json "推演这个方案" | jq '{content, usage, finish_reason}'
 
 # 并行交叉验证：同题并发多模型（别名=模型组快捷方式展开为整组；可混字面 ID、逗号分隔）
-brain compare -m reason -m coding "方案A的并发风险在哪"      # stdout 按 ===== model: X ===== 分隔头拼接
-brain compare -m reason --json "推演方案" | jq -r '.responses[] | select(.ok) | .content'
-brain compare -m reason --blind "结论可靠吗"                 # 匿名 Model_A/B，防你偏向同厂牌答案
+brain compare -m reason -m coding -f plan.md "这个方案的并发风险在哪"      # stdout 按 ===== model: X ===== 分隔头拼接
+brain compare -m reason -f plan.md --json "推演这个方案" | jq -r '.responses[] | select(.ok) | .content'
+brain compare -m reason --blind -f report.md "这份报告的结论可靠吗"                 # 匿名 Model_A/B，防你偏向同厂牌答案
 
 # 串行辩论：第 1 轮并行盲评（互不可见）+ 第 2 轮蛇形交锋（末轮自动收尾）；材料照常 -f / 管道喂
 brain council -m reason -m coding -f design.md "评审这份设计的并发与存储取舍"   # stdout 按 ===== model: X | round r ===== 时间序拼接

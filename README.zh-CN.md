@@ -54,8 +54,8 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 # 多模型交叉验证——裁决永远由你做（brain 不内建裁判）
 
 # 并行：同题并发 N 个模型，原文按 ===== model: X ===== 分隔头拼接
-brain compare -m reason "对这个结论做压力测试"
-brain compare -m reason --json "对这个结论做压力测试" | jq -r '.responses[] | select(.ok) | .content'
+brain compare -m reason -f report.md "这份报告的推理可靠吗"
+brain compare -m reason -f report.md --json "这份报告的推理可靠吗" | jq -r '.responses[] | select(.ok) | .content'
 
 # 串行辩论（council）：第 1 轮并行盲评，后续蛇形串行、发言记录递增——后发言者可评价
 # 先发言者，末轮给出各方最终立场/观点变化/未解分歧。总调用 = 模型数 × 轮次。

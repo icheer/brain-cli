@@ -54,8 +54,8 @@ brain ask -m fast "introduce yourself in one sentence"   # -m also accepts liter
 # Multi-model cross-checks — adjudication is always yours (brain ships no built-in judge)
 
 # Parallel: same question to N models at once, replies under ===== model: X ===== headers
-brain compare -m reason "stress-test this conclusion"
-brain compare -m reason --json "stress-test this conclusion" | jq -r '.responses[] | select(.ok) | .content'
+brain compare -m reason -f report.md "stress-test the reasoning in this report"
+brain compare -m reason -f report.md --json "stress-test the reasoning in this report" | jq -r '.responses[] | select(.ok) | .content'
 
 # Serial debate (council): round 1 blind-parallel, then snake-serial rounds with a growing
 # transcript — later speakers critique earlier ones; the final round states each seat's
