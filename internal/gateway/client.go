@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // UserAgent 由 cmd 层在启动时注入实际版本（默认 dev）。
@@ -43,13 +45,15 @@ type StatusError struct {
 }
 
 func (e *StatusError) Error() string {
-	return fmt.Sprintf("网关返回 HTTP %d: %s", e.Status, e.Body)
+	return i18n.Tf("网关返回 HTTP %d: %s", "gateway returned HTTP %d: %s", e.Status, e.Body)
 }
 
 // TimeoutError 传输层超时（区别于 SIGINT 中断，对应 exit 4）。
 type TimeoutError struct{ Err error }
 
-func (e *TimeoutError) Error() string { return "请求超时: " + e.Err.Error() }
+func (e *TimeoutError) Error() string {
+	return i18n.T("请求超时", "request timeout") + ": " + e.Err.Error()
+}
 func (e *TimeoutError) Unwrap() error { return e.Err }
 
 // ListModels 拉取 /v1/models，返回排序后的模型 ID 列表。
@@ -71,13 +75,13 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("序列化请求失败: %w", err)
+			return fmt.Errorf("%s: %w", i18n.T("序列化请求失败", "failed to marshal request"), err)
 		}
 		rd = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, rd)
 	if err != nil {
-		return fmt.Errorf("构造请求失败: %w", err)
+		return fmt.Errorf("%s: %w", i18n.T("构造请求失败", "failed to build request"), err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("User-Agent", UserAgent)
@@ -92,20 +96,20 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		if isTimeout(err) {
 			return &TimeoutError{Err: err}
 		}
-		return fmt.Errorf("网络错误: %w", err)
+		return fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return fmt.Errorf("读取响应失败: %w", err)
+		return fmt.Errorf("%s: %w", i18n.T("读取响应失败", "failed to read response"), err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &StatusError{Status: resp.StatusCode, Body: truncate(string(data), 400), RetryAfter: retryAfter(resp)}
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
-			return fmt.Errorf("解析网关响应失败: %w（响应片段: %s）", err, truncate(string(data), 200))
+			return fmt.Errorf("%s: %w（%s: %s）", i18n.T("解析网关响应失败", "failed to parse gateway response"), err, i18n.T("响应片段", "response snippet"), truncate(string(data), 200))
 		}
 	}
 	return nil

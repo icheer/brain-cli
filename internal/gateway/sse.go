@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // ChatResult 是一次完整生成结果，由 SSE 增量累积而来。
@@ -51,11 +53,11 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 
 	body, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
+		return nil, fmt.Errorf("%s: %w", i18n.T("序列化请求失败", "failed to marshal request"), err)
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("构造请求失败: %w", err)
+		return nil, fmt.Errorf("%s: %w", i18n.T("构造请求失败", "failed to build request"), err)
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 	httpReq.Header.Set("User-Agent", UserAgent)
@@ -67,7 +69,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 		if isTimeout(err) {
 			return nil, &TimeoutError{Err: err}
 		}
-		return nil, fmt.Errorf("网络错误: %w", err)
+		return nil, fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
 	}
 	defer resp.Body.Close()
 
@@ -128,10 +130,10 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 		if isTimeout(err) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, &TimeoutError{Err: err}
 		}
-		return nil, fmt.Errorf("流中断: %w", err)
+		return nil, fmt.Errorf("%s: %w", i18n.T("流中断", "stream interrupted"), err)
 	}
 	if res.Content == "" && res.Thinking == "" && res.FinishReason == "" {
-		return nil, fmt.Errorf("流式响应没有任何内容（网关异常）")
+		return nil, fmt.Errorf("%s", i18n.T("流式响应没有任何内容（网关异常）", "stream produced no content (gateway misbehaving)"))
 	}
 	return &res, nil
 }

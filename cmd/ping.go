@@ -15,6 +15,7 @@ import (
 	"github.com/icheer/brain-cli/internal/config"
 	"github.com/icheer/brain-cli/internal/exitcode"
 	"github.com/icheer/brain-cli/internal/gateway"
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 type pingOptions struct {
@@ -27,22 +28,32 @@ var pingOpts pingOptions
 
 var pingCmd = &cobra.Command{
 	Use:   "ping [-m model] [--timeout 秒] [--json]",
-	Short: "自检连通性 / 鉴权 / 模型清单（-m 时逐模型探测别名链）",
-	Long: `快速自检（SKILL.md 引导 Agent 首次使用 brain 前先跑它）：
+	Short: i18n.T("自检连通性 / 鉴权 / 模型清单（-m 时逐模型探测别名链）",
+		"self-check connectivity / auth / model list (with -m, probe each model in the chain)"),
+	Long: i18n.T(`快速自检（SKILL.md 引导 Agent 首次使用 brain 前先跑它）：
   1. 网关连通性
   2. api_key 鉴权
   3. default_model 别名解析与可用性
 
 -m <别名或模型ID> 时额外逐个探测别名链上的模型（各发一次极小补全请求）。
 /v1/models 列出不代表对本 key 可用，探测才是硬证据。
-stdout 逐项输出结果；--json 时输出单对象（成败恒定，error 与 ask --json 同构）。`,
+stdout 逐项输出结果；--json 时输出单对象（成败恒定，error 与 ask --json 同构）。`, `Quick self-check (SKILL.md tells agents to run this first):
+  1. gateway connectivity
+  2. api_key auth
+  3. default_model alias resolution and availability
+
+With -m <alias-or-id>, additionally probe every model in the chain (one tiny
+completion each). Being listed in /v1/models does not mean usable with your key;
+an actual probe is the only hard evidence.
+Results print line by line on stdout; --json emits exactly one object
+(success or failure, error shaped like ask --json).`),
 	RunE: runPing,
 }
 
 func init() {
-	pingCmd.Flags().IntVar(&pingOpts.timeout, "timeout", 20, "每项检查的秒数上限（清单检查与逐模型探测各自独立计时）")
-	pingCmd.Flags().StringVarP(&pingOpts.model, "model", "m", "", "别名或模型 ID：逐个探测其 fallback 链")
-	pingCmd.Flags().BoolVar(&pingOpts.jsonOut, "json", false, "单行 JSON 输出（机器可读）")
+	pingCmd.Flags().IntVar(&pingOpts.timeout, "timeout", 20, i18n.T("每项检查的秒数上限（清单检查与逐模型探测各自独立计时）", "per-check timeout in seconds (list check and each probe are timed independently)"))
+	pingCmd.Flags().StringVarP(&pingOpts.model, "model", "m", "", i18n.T("别名或模型 ID：逐个探测其 fallback 链", "alias or model ID: probe each model of its fallback chain"))
+	pingCmd.Flags().BoolVar(&pingOpts.jsonOut, "json", false, i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
 	rootCmd.AddCommand(pingCmd)
 }
 
@@ -97,7 +108,7 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%v", err)
 	}
 	if cfg.BaseURL == "" || cfg.APIKey == "" {
-		return exitcode.Fail(stderr, exitcode.ConfigMissing, "缺少 base_url / api_key，修复：brain config set（brain config path 查看路径）")
+		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s", i18n.T("缺少 base_url / api_key，修复：brain config set（brain config path 查看路径）", "missing base_url / api_key; fix with: brain config set (see brain config path)"))
 	}
 	payload.BaseURL = cfg.BaseURL
 
@@ -107,20 +118,20 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 		payload.Connectivity = "fail"
 		var se *gateway.StatusError
 		if errors.As(err, &se) && (se.Status == 401 || se.Status == 403) {
-			return exitcode.Fail(stderr, exitcode.Auth, "鉴权失败（HTTP %d）：检查 api_key → brain config set api_key <sk-...>", se.Status)
+			return exitcode.Fail(stderr, exitcode.Auth, "%s", i18n.Tf("鉴权失败（HTTP %d）：检查 api_key → brain config set api_key <sk-...>", "auth failed (HTTP %d): check api_key -> brain config set api_key <sk-...>", se.Status))
 		}
-		return exitcode.Fail(stderr, exitCodeFor(err), "网关不可达或异常: %v", err)
+		return exitcode.Fail(stderr, exitCodeFor(err), "%s", i18n.Tf("网关不可达或异常: %v", "gateway unreachable or abnormal: %v", err))
 	}
 	payload.Connectivity, payload.Auth = "ok", "ok"
 	payload.ModelCount = len(models)
 	if !pingOpts.jsonOut { // --json 模式 stdout 只输出单对象，人类可读行走 stderr 或省略
-		fmt.Fprintf(stdout, "连通性 OK  %s\n", cfg.BaseURL)
-		fmt.Fprintf(stdout, "鉴权 OK    api_key 有效\n")
-		fmt.Fprintf(stdout, "模型清单 OK  %d 个（brain models 查看）\n", len(models))
+		fmt.Fprintf(stdout, "%s  %s\n", i18n.T("连通性 OK", "connectivity OK"), cfg.BaseURL)
+		fmt.Fprintf(stdout, "%s    %s\n", i18n.T("鉴权 OK", "auth OK"), i18n.T("api_key 有效", "api_key valid"))
+		fmt.Fprintf(stdout, "%s  %d %s\n", i18n.T("模型清单 OK", "model list OK"), len(models), i18n.T("个（brain models 查看）", "(see brain models)"))
 	}
 
 	if cfg.DefaultModel == "" {
-		fmt.Fprintln(stderr, "brain: 提示: 未设置 default_model，不影响 -m 显式指定（brain config set default_model <别名>）")
+		fmt.Fprintln(stderr, "brain:", i18n.T("提示: 未设置 default_model，不影响 -m 显式指定（brain config set default_model <别名>）", "note: default_model not set; -m still works explicitly (brain config set default_model <alias>)"))
 	}
 
 	if cfg.DefaultModel != "" {
@@ -138,12 +149,13 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 		}
 		payload.DefaultModel = &pingDefaultJSON{Requested: cfg.DefaultModel, Resolved: primary, OK: ok}
 		if !ok {
-			return exitcode.Fail(stderr, exitcode.Usage,
-				"默认模型 %s → %s 不在网关可用列表（可能无权限或已下线）：brain models --refresh 核对并更新 config.yaml 的 aliases 段",
-				cfg.DefaultModel, primary)
+			return exitcode.Fail(stderr, exitcode.Usage, "%s",
+				i18n.Tf("默认模型 %s → %s 不在网关可用列表（可能无权限或已下线）：brain models --refresh 核对并更新 config.yaml 的 aliases 段",
+					"default model %s -> %s not in gateway listing (no permission or retired?): cross-check with brain models --refresh and update the config.yaml aliases section",
+					cfg.DefaultModel, primary))
 		}
 		if !pingOpts.jsonOut {
-			fmt.Fprintf(stdout, "默认模型 OK  %s → %s\n", cfg.DefaultModel, primary)
+			fmt.Fprintf(stdout, "%s  %s → %s\n", i18n.T("默认模型 OK", "default model OK"), cfg.DefaultModel, primary)
 		}
 	}
 
@@ -185,25 +197,25 @@ func probeChain(ctx context.Context, stdout, stderr io.Writer, g *gateway.Client
 		switch {
 		case err != nil:
 			p.Error = oneLine(err.Error(), 120)
-			fmt.Fprintf(stderr, "brain: 探测失败 %s: %s\n", m, p.Error)
+			fmt.Fprintf(stderr, "brain: %s %s: %s\n", i18n.T("探测失败", "probe failed"), m, p.Error)
 		case res.Content == "":
-			p.Error = "空正文（finish_reason=" + res.FinishReason + "，可能思维链耗尽输出预算）"
-			fmt.Fprintf(stderr, "brain: 探测失败 %s: %s\n", m, p.Error)
+			p.Error = i18n.Tf("空正文（finish_reason=%s，可能思维链耗尽输出预算）", "empty content (finish_reason=%s; thinking may have eaten the output budget)", res.FinishReason)
+			fmt.Fprintf(stderr, "brain: %s %s: %s\n", i18n.T("探测失败", "probe failed"), m, p.Error)
 		default:
 			p.OK = true
 			anyOK = true
 			if !pingOpts.jsonOut {
-				fmt.Fprintf(stdout, "探测 OK  %s (%s)\n", m, humanMillis(p.LatencyMs))
+				fmt.Fprintf(stdout, "%s  %s (%s)\n", i18n.T("探测 OK", "probe OK"), m, humanMillis(p.LatencyMs))
 			}
 		}
 		payload.Probes = append(payload.Probes, p)
 	}
 
 	if !anyOK {
-		return exitcode.Fail(stderr, exitcode.Upstream, "别名链 %d 个模型全部探测失败", len(chain))
+		return exitcode.Fail(stderr, exitcode.Upstream, "%s", i18n.Tf("别名链 %d 个模型全部探测失败", "all %d models in the chain failed probing", len(chain)))
 	}
 	if !payload.Probes[0].OK {
-		fmt.Fprintln(stderr, "brain: 提示: 主模型探测失败，实际调用将由链上后备承接（建议更新 config.yaml 的 aliases 段）")
+		fmt.Fprintln(stderr, "brain:", i18n.T("提示: 主模型探测失败，实际调用将由链上后备承接（建议更新 config.yaml 的 aliases 段）", "note: primary model failed probing; calls will fall back to the chain (consider updating the config.yaml aliases section)"))
 	}
 	return nil
 }

@@ -1,11 +1,11 @@
 package app
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/icheer/brain-cli/internal/config"
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // ModelChain 把 -m / default_model 展开为尝试链：
@@ -13,7 +13,7 @@ import (
 func ModelChain(name string, aliases map[string]config.Alias) ([]string, error) {
 	if a, ok := aliases[name]; ok {
 		if len(a.Models) == 0 {
-			return nil, &InputError{Msg: fmt.Sprintf("config.yaml 别名 %q 的 models 列表为空", name)}
+			return nil, &InputError{Msg: i18n.Tf("config.yaml 别名 %q 的 models 列表为空", "alias %q in config.yaml has an empty models list", name)}
 		}
 		return a.Models, nil
 	}

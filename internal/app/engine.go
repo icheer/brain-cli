@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/icheer/brain-cli/internal/gateway"
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // errAction 单类错误的处置策略。
@@ -41,7 +42,8 @@ func (e *AskEngine) Ask(ctx context.Context, chain []string,
 	for i, model := range chain {
 		e.Attempted = append(e.Attempted, model)
 		if i > 0 {
-			fmt.Fprintf(e.Stderr, "brain: 故障转移 %s → %s（%s）\n", chain[i-1], model, shortErr(lastErr))
+			fmt.Fprintf(e.Stderr, "brain: %s %s → %s（%s）\n",
+				i18n.T("故障转移", "failover"), chain[i-1], model, shortErr(lastErr))
 		}
 	nextAttempt:
 		for attempt := 0; ; attempt++ {
@@ -71,7 +73,8 @@ func (e *AskEngine) Ask(ctx context.Context, chain []string,
 				// 剩余预算不够再等一次退避：按总超时收场
 				return nil, model, &gateway.TimeoutError{Err: ctx.Err()}
 			}
-			fmt.Fprintf(e.Stderr, "brain: %s 失败（%s），%.1fs 后重试\n", model, shortErr(err), backoff.Seconds())
+			fmt.Fprintf(e.Stderr, "brain: %s %s（%s），%.1fs %s\n", model, i18n.T("失败", "failed"),
+				shortErr(err), backoff.Seconds(), i18n.T("后重试", "until retry"))
 			select {
 			case <-time.After(backoff):
 			case <-ctx.Done():

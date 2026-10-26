@@ -20,6 +20,7 @@ import (
 	"github.com/icheer/brain-cli/internal/config"
 	"github.com/icheer/brain-cli/internal/exitcode"
 	"github.com/icheer/brain-cli/internal/gateway"
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 type askOptions struct {
@@ -41,33 +42,63 @@ type askOptions struct {
 var askOpts askOptions
 
 var askCmd = &cobra.Command{
-	Use:   "ask [-m model] [-e effort] [-f file]... [-i image]... [-s system]... [--json] [prompt...]",
-	Short: "发起一次咨询，stdout 只输出模型正文（--json 时为单行 JSON）",
-	Long: `发起一次咨询。输入按「位置参数 → -f（按出现顺序）→ stdin 管道」拼接，
+	Use: "ask [-m model] [-e effort] [-f file]... [-i image]... [-s system]... [--json] [prompt...]",
+	Short: i18n.T("发起一次咨询，stdout 只输出模型正文（--json 时为单行 JSON）",
+		"Ask once; stdout carries only the model reply (single-line JSON with --json)"),
+	Long: i18n.T(`发起一次咨询。输入按「位置参数 → -f（按出现顺序）→ stdin 管道」拼接，
 图片以 -i 追加在文本之后。别名自带故障转移链，失败自动换下一模型（stderr 提示）。示例：
 
   brain ask -m coding "审查这段代码的并发安全性"
   cat slow.log | brain ask -m reason "找出最慢的三处并解释原因"
   brain ask -m vision -i chart.png "这张图说明了什么"
-  brain ask -m reason -e high --json "推演方案" | jq -r .content`,
+  brain ask -m reason -e high --json "推演方案" | jq -r .content`, `Ask once. Input is assembled as "positional args → -f files (in order) → piped stdin",
+images appended after the text. Aliases carry a fallback chain; on failure brain
+switches to the next model automatically (noted on stderr). Examples:
+
+  brain ask -m coding "review this code for concurrency issues"
+  cat slow.log | brain ask -m reason "find the three slowest spots and explain why"
+  brain ask -m vision -i chart.png "what does this chart tell"
+  brain ask -m reason -e high --json "reason it out" | jq -r .content`),
 	Args: cobra.ArbitraryArgs,
 	RunE: runAsk,
 }
 
 func init() {
-	askCmd.Flags().StringVarP(&askOpts.model, "model", "m", "", "模型别名或字面模型 ID（缺省用 config 的 default_model）")
-	askCmd.Flags().StringArrayVarP(&askOpts.files, "file", "f", nil, "文本文件，可多次")
-	askCmd.Flags().StringArrayVarP(&askOpts.images, "image", "i", nil, "图片（本地路径或 URL），可多次")
-	askCmd.Flags().StringArrayVarP(&askOpts.system, "system", "s", nil, "系统提示词，可重复（以空行连接）")
-	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0, "整体超时秒数（含重试与故障转移，覆盖 config）")
-	askCmd.Flags().Int64Var(&askOpts.maxInputBytes, "max-input-bytes", 0, "输入文本上限字节数（覆盖 config）")
-	askCmd.Flags().StringVarP(&askOpts.reasoningEffort, "reasoning-effort", "e", "", "推理深度纯透传（档位因模型而异，如 low/medium/high/xhigh/max；不设则用各模型默认）")
-	askCmd.Flags().IntVar(&askOpts.maxOutputTokens, "max-output-tokens", 0, "输出预算（max_tokens）纯透传：防思维链吃满输出预算、限制长输出；0=不传用网关默认")
-	askCmd.Flags().BoolVarP(&askOpts.quiet, "quiet", "q", false, "静默 stderr：关闭心跳/耗时/转移提示（警告与错误保留）")
-	askCmd.Flags().BoolVar(&askOpts.dryRun, "dry-run", false, "只组装并输出最终将发送的 messages（单行 JSON），不发起网络请求")
-	askCmd.Flags().BoolVar(&askOpts.jsonOut, "json", false, "单行 JSON 输出（成败恒定一个对象，含 usage/latency/error）")
-	askCmd.Flags().BoolVar(&askOpts.stream, "stream", false, "正文增量打印到 stdout（人类交互用；开始输出后禁用重试与故障转移）")
-	askCmd.Flags().BoolVar(&askOpts.showThinking, "show-thinking", false, "思维链走 stderr，stdout 仍只有正文（--stream 时思维链同步增量）")
+	askCmd.Flags().StringVarP(&askOpts.model, "model", "m", "",
+		i18n.T("模型别名或字面模型 ID（缺省用 config 的 default_model）",
+			"model alias or literal model ID (defaults to default_model from config)"))
+	askCmd.Flags().StringArrayVarP(&askOpts.files, "file", "f", nil,
+		i18n.T("文本文件，可多次", "text file, repeatable"))
+	askCmd.Flags().StringArrayVarP(&askOpts.images, "image", "i", nil,
+		i18n.T("图片（本地路径或 URL），可多次", "image (local path or URL), repeatable"))
+	askCmd.Flags().StringArrayVarP(&askOpts.system, "system", "s", nil,
+		i18n.T("系统提示词，可重复（以空行连接）", "system prompt, repeatable (joined by a blank line)"))
+	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0,
+		i18n.T("整体超时秒数（含重试与故障转移，覆盖 config）",
+			"overall timeout in seconds, incl. retries and fallback (overrides config)"))
+	askCmd.Flags().Int64Var(&askOpts.maxInputBytes, "max-input-bytes", 0,
+		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
+	askCmd.Flags().StringVarP(&askOpts.reasoningEffort, "reasoning-effort", "e", "",
+		i18n.T("推理深度纯透传（档位因模型而异，如 low/medium/high/xhigh/max；不设则用各模型默认）",
+			"reasoning effort, passed through as-is (model-specific tiers like low/medium/high/xhigh/max; unset = model default)"))
+	askCmd.Flags().IntVar(&askOpts.maxOutputTokens, "max-output-tokens", 0,
+		i18n.T("输出预算（max_tokens）纯透传：防思维链吃满输出预算、限制长输出；0=不传用网关默认",
+			"output budget (max_tokens), passed through as-is: guards against thinking eating the whole budget, caps long output; 0 = omit, gateway default"))
+	askCmd.Flags().BoolVarP(&askOpts.quiet, "quiet", "q", false,
+		i18n.T("静默 stderr：关闭心跳/耗时/转移提示（警告与错误保留）",
+			"quiet stderr: no heartbeat/elapsed/fallback chatter (warnings and errors kept)"))
+	askCmd.Flags().BoolVar(&askOpts.dryRun, "dry-run", false,
+		i18n.T("只组装并输出最终将发送的 messages（单行 JSON），不发起网络请求",
+			"assemble and print the final messages (single-line JSON) without any network call"))
+	askCmd.Flags().BoolVar(&askOpts.jsonOut, "json", false,
+		i18n.T("单行 JSON 输出（成败恒定一个对象，含 usage/latency/error）",
+			"single-line JSON output (always exactly one object, success or failure, with usage/latency/error)"))
+	askCmd.Flags().BoolVar(&askOpts.stream, "stream", false,
+		i18n.T("正文增量打印到 stdout（人类交互用；开始输出后禁用重试与故障转移）",
+			"stream content to stdout incrementally (for humans; disables retry/fallback once output starts)"))
+	askCmd.Flags().BoolVar(&askOpts.showThinking, "show-thinking", false,
+		i18n.T("思维链走 stderr，stdout 仍只有正文（--stream 时思维链同步增量）",
+			"print reasoning to stderr, stdout stays content-only (streams alongside --stream)"))
 }
 
 // heartbeatInterval 心跳间隔（DESIGN.md 3.2：长推理时的 stderr 进度提示）。
@@ -104,17 +135,18 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 
 	// --stream 是人类交互模式，--json 是机器解析模式，二者互斥
 	if askOpts.stream && askOpts.jsonOut {
-		return exitcode.Fail(stderr, exitcode.Usage, "--stream 与 --json 互斥")
+		return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("--stream 与 --json 互斥", "--stream and --json are mutually exclusive"))
 	}
 	// --dry-run 自身输出 JSON，且不发请求，与两者均互斥
 	if askOpts.dryRun && askOpts.stream {
-		return exitcode.Fail(stderr, exitcode.Usage, "--dry-run 与 --stream 互斥")
+		return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("--dry-run 与 --stream 互斥", "--dry-run and --stream are mutually exclusive"))
 	}
 	if askOpts.dryRun && askOpts.jsonOut {
-		return exitcode.Fail(stderr, exitcode.Usage, "--dry-run 与 --json 互斥（--dry-run 自身输出单行 JSON）")
+		return exitcode.Fail(stderr, exitcode.Usage, "%s",
+			i18n.T("--dry-run 与 --json 互斥（--dry-run 自身输出单行 JSON）", "--dry-run and --json are mutually exclusive (--dry-run itself prints single-line JSON)"))
 	}
 	if askOpts.maxOutputTokens < 0 {
-		return exitcode.Fail(stderr, exitcode.Usage, "--max-output-tokens 应为正整数")
+		return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("--max-output-tokens 应为正整数", "--max-output-tokens must be a positive integer"))
 	}
 
 	// --json：无论成败（含配置/输入错误），stdout 恒定输出一个 JSON 对象。
@@ -156,11 +188,12 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 
 	cfg, warnings, err := config.Load()
 	if err != nil {
-		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%v（brain config edit 可修复）", err)
+		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s",
+			i18n.Tf("%v（brain config edit 可修复）", "%v (fix with: brain config edit)", err))
 	}
 	applyUserAgent(cfg)
 	for _, w := range warnings {
-		fmt.Fprintf(stderr, "brain: 警告: %s\n", w)
+		fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("警告:", "warning:"), w)
 	}
 
 	// CLI flags 最后覆盖（优先级：flags > 环境变量 > config.yaml > 默认值）
@@ -172,10 +205,14 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	}
 
 	if cfg.BaseURL == "" {
-		return exitcode.Fail(stderr, exitcode.ConfigMissing, "缺少 base_url，修复：brain config set base_url <https://your-gateway/v1>")
+		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s",
+			i18n.T("缺少 base_url，修复：brain config set base_url <https://your-gateway/v1>",
+				"missing base_url; fix: brain config set base_url <https://your-gateway/v1>"))
 	}
 	if cfg.APIKey == "" {
-		return exitcode.Fail(stderr, exitcode.ConfigMissing, "缺少 api_key，修复：brain config set api_key <sk-...>（或设 BRAIN_API_KEY 环境变量）")
+		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s",
+			i18n.T("缺少 api_key，修复：brain config set api_key <sk-...>（或设 BRAIN_API_KEY 环境变量）",
+				"missing api_key; fix: brain config set api_key <sk-...> (or set BRAIN_API_KEY)"))
 	}
 
 	name := askOpts.model
@@ -183,7 +220,9 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		name = cfg.DefaultModel
 	}
 	if name == "" {
-		return exitcode.Fail(stderr, exitcode.ConfigMissing, "未指定模型，修复：-m <别名或模型ID> 或 brain config set default_model <别名>")
+		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s",
+			i18n.T("未指定模型，修复：-m <别名或模型ID> 或 brain config set default_model <别名>",
+				"no model specified; fix: -m <alias-or-model-id> or brain config set default_model <alias>"))
 	}
 	payload.Requested = name
 	if askOpts.reasoningEffort != "" {
@@ -202,16 +241,19 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		var tl *app.TooLargeError
 		if errors.As(err, &tl) {
-			return exitcode.Fail(stderr, exitcode.InputTooLarge,
-				"输入 %s 超过上限 %s（--max-input-bytes 可调）", humanBytes(tl.Size), humanBytes(tl.Limit))
+			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s",
+				i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
+					"input %s exceeds limit %s (adjustable via --max-input-bytes)",
+					humanBytes(tl.Size), humanBytes(tl.Limit)))
 		}
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
 
 	// 图片（-i）同样是合法输入：纯图咨询（如 vision 别名）不需要文本
 	if text == "" && len(askOpts.images) == 0 {
-		return exitcode.Fail(stderr, exitcode.Usage,
-			"没有输入内容：需要位置参数、-f 文件、管道 stdin 或 -i 图片至少其一")
+		return exitcode.Fail(stderr, exitcode.Usage, "%s",
+			i18n.T("没有输入内容：需要位置参数、-f 文件、管道 stdin 或 -i 图片至少其一",
+				"no input: provide at least one of positional args, -f files, piped stdin, or -i images"))
 	}
 
 	// 图片块排在文本块之后（DESIGN.md 3.1）；纯图时无文本块
@@ -333,7 +375,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		select {
 		case <-interrupted:
-			return exitcode.Fail(stderr, exitcode.Interrupt, "被中断")
+			return exitcode.Fail(stderr, exitcode.Interrupt, "%s", i18n.T("被中断", "interrupted"))
 		default:
 		}
 		payload.LatencyMs = time.Since(start).Milliseconds()
@@ -342,7 +384,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		var se *gateway.StatusError
 		if errors.As(err, &se) && app.IsModelError(se) {
 			if cands := app.Suggest(append([]string{name}, chain...), cfg.Aliases, app.ReadCachedModels()); len(cands) > 0 {
-				fmt.Fprintf(stderr, "brain: 相近的可用模型: %s\n", strings.Join(cands, ", "))
+				fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("相近的可用模型:", "similar available models:"), strings.Join(cands, ", "))
 			}
 		}
 		return exitcode.Fail(stderr, exitCodeFor(err), "%v", err)
@@ -359,9 +401,12 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		// 真实场景：思维链把输出预算耗尽（finish_reason=length）导致正文为空
 		note := ""
 		if res.Thinking != "" {
-			note = fmt.Sprintf("，收到思维链 ~%s 字符（--json 可读取 thinking）", humanCount(int64(len(res.Thinking))))
+			note = i18n.Tf("，收到思维链 ~%s 字符（--json 可读取 thinking）",
+				"; got ~%s chars of reasoning (readable as thinking via --json)", humanCount(int64(len(res.Thinking))))
 		}
-		fmt.Fprintf(stderr, "brain: 警告: 模型返回空内容（finish_reason=%s%s）\n", res.FinishReason, note)
+		fmt.Fprintf(stderr, "brain: %s %s（finish_reason=%s%s）\n",
+			i18n.T("警告:", "warning:"),
+			i18n.T("模型返回空内容", "model returned empty content"), res.FinishReason, note)
 	}
 
 	// 输出阶段：正文/JSON 两个互斥写点，全程序仅此一处写 stdout（DESIGN.md 3.2）
@@ -375,8 +420,9 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		// 由函数开头的 defer 输出单对象
 	default:
 		if askOpts.showThinking && res.Thinking != "" {
-			fmt.Fprintf(stderr, "brain: —— 思维链（~%s 字符）——\n%s\n",
-				humanCount(int64(len(res.Thinking))), res.Thinking)
+			dash := i18n.T("——", "--")
+			fmt.Fprintf(stderr, "brain: %s %s%s~%s %s%s\n%s\n",
+				dash, i18n.T("思维链", "reasoning"), i18n.T("（", " ("), humanCount(int64(len(res.Thinking))), i18n.T("字符", "chars"), i18n.T("）——", ") --"), res.Thinking)
 		}
 		if res.Content != "" {
 			fmt.Fprint(stdout, ensureSingleNewline(res.Content))
@@ -384,10 +430,11 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	fallbackNote := ""
 	if used != chain[0] {
-		fallbackNote = "（已故障转移）"
+		fallbackNote = i18n.T("（已故障转移）", " (failed over)")
 	}
 	if !askOpts.quiet {
-		fmt.Fprintf(stderr, "brain: %.1fs | 模型 %s%s\n", time.Since(start).Seconds(), used, fallbackNote)
+		fmt.Fprintf(stderr, "brain: %.1fs | %s %s%s\n", time.Since(start).Seconds(),
+			i18n.T("模型", "model"), used, fallbackNote)
 	}
 	return nil
 }
@@ -419,7 +466,9 @@ func redactMessages(msgs []gateway.Message) []gateway.Message {
 				continue
 			}
 			if u := np[j].ImageURL.URL; strings.HasPrefix(u, "data:") && len(u) > 160 {
-				np[j].ImageURL = &gateway.ImageURL{URL: u[:96] + fmt.Sprintf("…（省略 %d 字节）", len(u)-96)}
+				np[j].ImageURL = &gateway.ImageURL{
+					URL: u[:96] + i18n.Tf("…（省略 %d 字节）", "... (%d bytes omitted)", len(u)-96),
+				}
 			}
 		}
 		out[i].Content = np

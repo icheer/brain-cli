@@ -13,6 +13,8 @@ import (
 	"strconv"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // Config 与 DESIGN.md 2.2 的 config.yaml 一一对应；aliases 段可选（缺省 -m 按字面模型 ID 处理）。
@@ -55,7 +57,7 @@ func Path() (string, error) {
 func userPath(name string) (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("无法定位用户配置目录: %w", err)
+		return "", fmt.Errorf("%s: %w", i18n.T("无法定位用户配置目录", "cannot locate user config dir"), err)
 	}
 	return filepath.Join(dir, "brain", name), nil
 }
@@ -82,13 +84,14 @@ func Load() (Config, []string, error) {
 	switch {
 	case err == nil:
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return cfg, warnings, &FileError{Path: p, Err: fmt.Errorf("YAML 解析失败: %w", err)}
+			return cfg, warnings, &FileError{Path: p, Err: fmt.Errorf("%s: %w", i18n.T("YAML 解析失败", "YAML parse failed"), err)}
 		}
 		// 权限检查：含密钥的文件应保持 0600（DESIGN.md 2.4）
 		if runtime.GOOS != "windows" {
 			if info, statErr := os.Stat(p); statErr == nil && info.Mode().Perm() != 0o600 {
-				warnings = append(warnings, fmt.Sprintf(
-					"config.yaml 权限为 %04o（应为 0600）：chmod 600 %s", info.Mode().Perm(), p))
+				warnings = append(warnings, i18n.Tf(
+					"config.yaml 权限为 %04o（应为 0600）：chmod 600 %s",
+					"config.yaml permission is %04o (should be 0600); fix: chmod 600 %s", info.Mode().Perm(), p))
 			}
 		}
 	case errors.Is(err, fs.ErrNotExist):
@@ -113,7 +116,7 @@ func Load() (Config, []string, error) {
 	if v := os.Getenv("BRAIN_TIMEOUT"); v != "" {
 		n, perr := strconv.Atoi(v)
 		if perr != nil {
-			return cfg, warnings, fmt.Errorf("BRAIN_TIMEOUT 应为秒数: %w", perr)
+			return cfg, warnings, fmt.Errorf("%s: %w", i18n.T("BRAIN_TIMEOUT 应为秒数", "BRAIN_TIMEOUT should be seconds"), perr)
 		}
 		cfg.TimeoutSeconds = n
 	}

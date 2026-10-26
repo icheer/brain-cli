@@ -13,18 +13,26 @@ import (
 
 	"github.com/icheer/brain-cli/internal/config"
 	"github.com/icheer/brain-cli/internal/exitcode"
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "查看/修改个人配置（config.yaml，含密钥，0600）",
-	Long: `管理 config.yaml（个人配置，含密钥，永不进仓库）：
+	Short: i18n.T("查看/修改个人配置（config.yaml，含密钥，0600）",
+		"view/edit personal config (config.yaml; contains the key, 0600)"),
+	Long: i18n.T(`管理 config.yaml（个人配置，含密钥，永不进仓库）：
 
   brain config path            打印配置文件路径
   brain config get <key>       查看某项（api_key 原样输出）
   brain config set <key> <v>   修改某项（写入后权限保持 0600）
   brain config list            列出全部（api_key 打码）
-  brain config edit            用编辑器打开（$VISUAL / $EDITOR）`,
+  brain config edit            用编辑器打开（$VISUAL / $EDITOR）`, `Manage config.yaml (personal config, contains the key; never commit it):
+
+  brain config path            print config file path
+  brain config get <key>       show one key (api_key verbatim)
+  brain config set <key> <v>   set one key (stays 0600 after write)
+  brain config list            list all (api_key masked)
+  brain config edit            open in $VISUAL / $EDITOR`),
 }
 
 // configKeys 允许 get/set/list 的键，与 config.Config 字段一一对应。
@@ -39,11 +47,11 @@ func init() {
 
 var configPathCmd = &cobra.Command{
 	Use:   "path",
-	Short: "打印配置文件路径",
+	Short: i18n.T("打印配置文件路径", "print the config file path"),
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		cp, err := config.Path()
 		if err != nil {
-			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "定位配置路径失败: %v", err)
+			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%s", i18n.Tf("定位配置路径失败: %v", "failed to locate config path: %v", err))
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), cp)
 		return nil
@@ -52,7 +60,7 @@ var configPathCmd = &cobra.Command{
 
 var configGetCmd = &cobra.Command{
 	Use:   "get <key>",
-	Short: "查看某项配置",
+	Short: i18n.T("查看某项配置", "show one config value"),
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, _, err := config.Load()
@@ -70,7 +78,7 @@ var configGetCmd = &cobra.Command{
 
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
-	Short: "修改某项配置",
+	Short: i18n.T("修改某项配置", "set one config value"),
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		stderr := cmd.ErrOrStderr()
@@ -90,14 +98,14 @@ var configSetCmd = &cobra.Command{
 			return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 		}
 		p, _ := config.Path()
-		fmt.Fprintf(stderr, "brain: 已写入 %s\n", p)
+		fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("已写入", "written"), p)
 		return nil
 	},
 }
 
 var configListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "列出全部配置（api_key 打码）",
+	Short: i18n.T("列出全部配置（api_key 打码）", "list all config values (api_key masked)"),
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		cfg, _, err := config.Load()
 		if err != nil {
@@ -117,7 +125,7 @@ var configListCmd = &cobra.Command{
 
 var configEditCmd = &cobra.Command{
 	Use:   "edit",
-	Short: "用编辑器打开 config.yaml",
+	Short: i18n.T("用编辑器打开 config.yaml", "open config.yaml in an editor"),
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		stderr := cmd.ErrOrStderr()
 		p, err := config.Path()
@@ -133,7 +141,7 @@ var configEditCmd = &cobra.Command{
 		c := exec.Command(editor, p)
 		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 		if err := c.Run(); err != nil {
-			return exitcode.Fail(stderr, exitcode.Usage, "编辑器 %s 退出异常: %v", editor, err)
+			return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.Tf("编辑器 %s 退出异常: %v", "editor %s exited abnormally: %v", editor, err))
 		}
 		return nil
 	},
@@ -156,8 +164,8 @@ func firstNonEmpty(ss ...string) string {
 }
 
 func unknownKey(cmd *cobra.Command, key string) error {
-	return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage,
-		"未知配置项 %q，可用: %s", key, strings.Join(configKeys, ", "))
+	return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%s",
+		i18n.Tf("未知配置项 %q，可用: %s", "unknown config key %q, available: %s", key, strings.Join(configKeys, ", ")))
 }
 
 func cfgValue(cfg config.Config, key string) (string, bool) {
@@ -195,7 +203,7 @@ func cfgSetValue(cfg *config.Config, key, value string) error {
 	case "max_input_bytes":
 		n, err := strconv.ParseInt(value, 10, 64)
 		if err != nil || n <= 0 {
-			return fmt.Errorf("max_input_bytes 应为正整数，得到 %q", value)
+			return fmt.Errorf("%s", i18n.Tf("max_input_bytes 应为正整数，得到 %q", "max_input_bytes must be a positive integer, got %q", value))
 		}
 		cfg.MaxInputBytes = n
 	case "retry_max":
@@ -205,7 +213,7 @@ func cfgSetValue(cfg *config.Config, key, value string) error {
 	case "user_agent":
 		cfg.UserAgent = value
 	default:
-		return fmt.Errorf("未知配置项 %q，可用: %s", key, strings.Join(configKeys, ", "))
+		return fmt.Errorf("%s", i18n.Tf("未知配置项 %q，可用: %s", "unknown config key %q, available: %s", key, strings.Join(configKeys, ", ")))
 	}
 	return nil
 }
@@ -213,7 +221,7 @@ func cfgSetValue(cfg *config.Config, key, value string) error {
 func setPositiveInt(key, value string, dst *int, minVal int) error {
 	n, err := strconv.Atoi(value)
 	if err != nil || n < minVal {
-		return fmt.Errorf("%s 应为不小于 %d 的整数，得到 %q", key, minVal, value)
+		return fmt.Errorf("%s", i18n.Tf("%s 应为不小于 %d 的整数，得到 %q", "%s must be an integer >= %d, got %q", key, minVal, value))
 	}
 	*dst = n
 	return nil

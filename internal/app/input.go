@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // InputError 调用方输入问题（exit 1）。
@@ -21,7 +23,7 @@ type TooLargeError struct {
 }
 
 func (e *TooLargeError) Error() string {
-	return fmt.Sprintf("输入 %d 字节超过上限 %d 字节", e.Size, e.Limit)
+	return i18n.Tf("输入 %d 字节超过上限 %d 字节", "input of %d bytes exceeds limit of %d bytes", e.Size, e.Limit)
 }
 
 // Assemble 按「位置参数 → -f（按出现顺序）→ stdin（若有）」装配正文文本，
@@ -64,23 +66,23 @@ func Assemble(args []string, files []string, stdin io.Reader, piped bool, limit 
 func readTextFile(path string, limit int64) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", &InputError{Msg: fmt.Sprintf("读取文件失败 %s: %v", path, err)}
+		return "", &InputError{Msg: i18n.Tf("读取文件失败 %s: %v", "failed to read file %s: %v", path, err)}
 	}
 	defer f.Close()
 
 	if info, err := f.Stat(); err == nil && info.IsDir() {
-		return "", &InputError{Msg: fmt.Sprintf("-f 指向的是目录: %s", path)}
+		return "", &InputError{Msg: i18n.Tf("-f 指向的是目录: %s", "-f points to a directory: %s", path)}
 	}
 
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
-		return "", &InputError{Msg: fmt.Sprintf("读取文件失败 %s: %v", path, err)}
+		return "", &InputError{Msg: i18n.Tf("读取文件失败 %s: %v", "failed to read file %s: %v", path, err)}
 	}
 	if int64(len(data)) > limit {
 		return "", &TooLargeError{Size: int64(len(data)), Limit: limit}
 	}
 	if !utf8.Valid(data) {
-		return "", &InputError{Msg: fmt.Sprintf("文件不是 UTF-8 文本（PDF/二进制请先转文本）: %s", path)}
+		return "", &InputError{Msg: i18n.Tf("文件不是 UTF-8 文本（PDF/二进制请先转文本）: %s", "file is not UTF-8 text (convert PDF/binary first): %s", path)}
 	}
 	return string(data), nil
 }

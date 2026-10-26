@@ -12,6 +12,7 @@ import (
 	"github.com/icheer/brain-cli/internal/config"
 	"github.com/icheer/brain-cli/internal/exitcode"
 	"github.com/icheer/brain-cli/internal/gateway"
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // 版本信息由 CI/goreleaser 通过 -ldflags 注入（DESIGN.md 第 5 节）：
@@ -24,8 +25,9 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "brain",
-	Short: "大模型网关外脑：给宿主 Agent 的一次干净利落的咨询调用",
-	Long: `brain 通过 OpenAI Chat Completions 兼容协议调用大模型网关。
+	Short: i18n.T("大模型网关外脑：给宿主 Agent 的一次干净利落的咨询调用",
+		"LLM gateway side-brain: one clean advisory call for host agents"),
+	Long: i18n.T(`brain 通过 OpenAI Chat Completions 兼容协议调用大模型网关。
 
 stdout 只输出模型正文；警告/耗时/心跳走 stderr（便于管道与 Agent 解析）。
 多轮上下文由调用方拼接，工具本身无状态。
@@ -33,7 +35,16 @@ stdout 只输出模型正文；警告/耗时/心跳走 stderr（便于管道与 
 快速开始：
   brain config set base_url <https://your-gateway/v1>
   brain config set api_key  <sk-...>
-  brain ask -m fast "帮我分析这个问题"`,
+  brain ask -m fast "帮我分析这个问题"`, `brain talks to an LLM gateway via the OpenAI Chat Completions protocol.
+
+stdout carries only the model reply; warnings/timing/heartbeat go to stderr
+(pipe- and agent-friendly). Multi-turn context is assembled by the caller;
+the tool itself is stateless.
+
+Quick start:
+  brain config set base_url <https://your-gateway/v1>
+  brain config set api_key  <sk-...>
+  brain ask -m fast "help me analyze this"`),
 	Version:       version,
 	SilenceUsage:  true, // 错误信息单行足够；详细用法看 --help
 	SilenceErrors: true, // 错误统一由 exitcode.Fail / run 打印，前缀一致

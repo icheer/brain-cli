@@ -2,12 +2,13 @@ package app
 
 import (
 	"encoding/base64"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // MaxImageBytes 单张图片上限（解码后 20 MiB）。
@@ -23,19 +24,19 @@ func PrepareImage(spec string) (string, error) {
 	}
 	f, err := os.Open(spec)
 	if err != nil {
-		return "", &InputError{Msg: fmt.Sprintf("读取图片失败 %s: %v", spec, err)}
+		return "", &InputError{Msg: i18n.Tf("读取图片失败 %s: %v", "failed to read image %s: %v", spec, err)}
 	}
 	defer f.Close()
 
 	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
-		return "", &InputError{Msg: fmt.Sprintf("不是常规图片文件: %s", spec)}
+		return "", &InputError{Msg: i18n.Tf("不是常规图片文件: %s", "not a regular image file: %s", spec)}
 	}
 	data, err := io.ReadAll(io.LimitReader(f, MaxImageBytes+1))
 	if err != nil {
-		return "", &InputError{Msg: fmt.Sprintf("读取图片失败 %s: %v", spec, err)}
+		return "", &InputError{Msg: i18n.Tf("读取图片失败 %s: %v", "failed to read image %s: %v", spec, err)}
 	}
 	if int64(len(data)) > MaxImageBytes {
-		return "", &InputError{Msg: fmt.Sprintf("图片超过单张上限 %d MiB: %s", MaxImageBytes>>20, spec)}
+		return "", &InputError{Msg: i18n.Tf("图片超过单张上限 %d MiB: %s", "image exceeds per-image limit of %d MiB: %s", MaxImageBytes>>20, spec)}
 	}
 	sniff := data
 	if len(sniff) > 512 {
@@ -43,7 +44,7 @@ func PrepareImage(spec string) (string, error) {
 	}
 	mime := http.DetectContentType(sniff)
 	if !strings.HasPrefix(mime, "image/") {
-		return "", &InputError{Msg: fmt.Sprintf("不是图片文件（检测到 %s）: %s", mime, spec)}
+		return "", &InputError{Msg: i18n.Tf("不是图片文件（检测到 %s）: %s", "not an image file (detected %s): %s", mime, spec)}
 	}
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
