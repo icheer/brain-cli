@@ -91,7 +91,7 @@ brain council -m panel -f design.md \
 
 ## 状态与路线
 
-**:rocket: v0.8.1 已发布**（M0–M8）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.9.0 已发布**（M0–M9）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |

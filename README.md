@@ -94,7 +94,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 ## Status & roadmap
 
-**:rocket: v0.8.1 released** (M0–M8) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
+**:rocket: v0.9.0 released** (M0–M9) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
