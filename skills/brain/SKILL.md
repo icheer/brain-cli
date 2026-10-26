@@ -69,13 +69,14 @@ brain compare -m reason -m coding "方案A的并发风险在哪"      # stdout �
 brain compare -m reason --json "推演方案" | jq -r '.responses[] | select(.ok) | .content'
 brain compare -m reason --blind "结论可靠吗"                 # 匿名 Model_A/B，防你偏向同厂牌答案
 
-# 串行辩论：第 1 轮并行盲评（互不可见）+ 第 2 轮蛇形交锋（末轮自动收尾）
-brain council -m reason -m coding "评审方案A的取舍"          # stdout 按 ===== model: X | round r ===== 时间序拼接
-brain council -m reason -C 3 "深挖这个架构决策的分歧"         # -C 3 在盲评与收尾之间加一轮增量交锋
+# 串行辩论：第 1 轮并行盲评（互不可见）+ 第 2 轮蛇形交锋（末轮自动收尾）；材料照常 -f / 管道喂
+brain council -m reason -m coding -f design.md "评审这份设计的并发与存储取舍"   # stdout 按 ===== model: X | round r ===== 时间序拼接
+brain council -m reason -C 3 -f design.md "深挖这份架构决策的分歧"              # -C 3 在盲评与收尾之间加一轮增量交锋
 brain council -m reason --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'
 
-# 立场/视角（透镜）无专用语法：席位-透镜表写进 -s，各席位自会对号入座
-brain council -m m-a -m m-b -s "席位-透镜表：m-a 从安全与边界防御视角；m-b 从性能与快速交付视角" "……"
+# 立场/视角（透镜）无专用语法：席位-透镜表写进 -s；每次发言会告知模型自己的席位名（模型 ID），
+# 模型按名字认领表中对应行——即全部映射机制
+brain council -m m-a -m m-b -f design.md -s "席位-透镜表：m-a 从安全与边界防御视角；m-b 从性能与快速交付视角" "评审这份设计"
 
 # 任意请求参数透传（temperature/top_k/response_format/厂商私有字段…）
 brain ask -m reason --extra-body '{"temperature":0.3,"top_k":50}' "推演"

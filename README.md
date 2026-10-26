@@ -60,9 +60,14 @@ brain compare -m reason --json "stress-test this conclusion" | jq -r '.responses
 # Serial debate (council): round 1 blind-parallel, then snake-serial rounds with a growing
 # transcript — later speakers critique earlier ones; the final round states each seat's
 # position, what changed, unresolved disagreements. Total calls = models × rounds.
-brain council -m reason -m coding "should this design adopt SQLite for storage"
-# Lenses/stances are just context: write a seat-to-lens table via -s, seats pick up their own
-brain council -m panel -s "seat lenses: aihub/gpt-6-astra = security & failure isolation; anti/gemini-3.8-flash = performance & delivery speed" "same question"
+brain council -m reason -m coding -f design.md "should this design adopt SQLite for storage"
+
+# Lenses/stances are just context: write a seat-to-lens table via -s. Each seat is told its
+# own model name when it speaks, so it claims the table line that names it — that is the
+# whole mapping mechanism; there is no syntax.
+brain council -m panel -f design.md \
+  -s "seat lenses: aihub/gpt-6-astra = security & failure isolation; anti/gemini-3.8-flash = performance & delivery speed" \
+  "should this design ship as is"
 ```
 
 For agents: copy or link `skills/brain/` into `.claude/skills/` (or `.agents/skills/`); SKILL.md teaches the host agent when to call brain, how, and when not to.

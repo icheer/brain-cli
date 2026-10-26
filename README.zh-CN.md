@@ -59,9 +59,12 @@ brain compare -m reason --json "对这个结论做压力测试" | jq -r '.respon
 
 # 串行辩论（council）：第 1 轮并行盲评，后续蛇形串行、发言记录递增——后发言者可评价
 # 先发言者，末轮给出各方最终立场/观点变化/未解分歧。总调用 = 模型数 × 轮次。
-brain council -m reason -m coding "这个设计该用 SQLite 做存储吗"
-# 立场/透镜就是上下文：用 -s 写席位-透镜表，各席位自会对号入座
-brain council -m panel -s "席位透镜：aihub/gpt-6-astra=安全与故障隔离；anti/gemini-3.8-flash=性能与交付速度" "同一个问题"
+brain council -m reason -m coding -f design.md "这个设计该用 SQLite 做存储吗"
+# 立场/透镜就是上下文：用 -s 写席位-透镜表。每个模型发言时都会被告知自己的席位名
+# （即模型 ID），它在表里认领写着自己名字的那一行——这就是全部的映射机制，没有语法。
+brain council -m panel -f design.md \
+  -s "席位透镜：aihub/gpt-6-astra=安全与故障隔离；anti/gemini-3.8-flash=性能与交付速度" \
+  "这个设计可以直接落地吗"
 ```
 
 给 Agent 用：把 `skills/brain/` 复制或链接进 `.claude/skills/`（或 `.agents/skills/`），SKILL.md 会引导宿主 Agent 何时、如何、何时不调用 brain。
