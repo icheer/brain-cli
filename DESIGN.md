@@ -168,7 +168,7 @@ aliases:
 - [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（全链路自 v0.1.0 起多版验证通过）
 - [x] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 6 目标交叉构建冒烟（真实网关 e2e 曾配 secret 落地，后因网关 IP 风控降级 continue-on-error，本地 `.env` 联调替代）
 - [x] `--version`：ldflags 注入 git tag / commit
-- [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）
+- [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）；v0.9.0 起支持安装模式——默认装技能目录 bin/、`--global` 复制进全局目录（不可写自动 sudo，`BRAIN_GLOBAL_BIN` 可改）、`--link` 技能目录安装+全局软链（单一二进制源，重装即全局升级；Windows Git Bash 软链不可靠退化为复制；全局写入先 rm 再写，防 cp 穿透既有软链）
 - [ ] 可选：Homebrew tap（需先建 `icheer/homebrew-tap` 仓库，goreleaser 加 brew 配置即可）；`go install` 作为开发者备选
 - [x] SKILL.md 随仓库分发（`skills/brain/SKILL.md`），README 说明如何链接/复制进 `.claude/skills/` 或 `.agents/skills/`
 

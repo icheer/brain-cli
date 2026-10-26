@@ -34,6 +34,8 @@
 ```bash
 # 安装（三选一）
 bash skills/brain/install.sh        # 技能场景：从 Release 下载二进制到技能目录（SHA256 校验）
+                                    #   追加 --link 可同时软链到 /usr/local/bin（重装即全局升级）；
+                                    #   追加 --global 则只装全局（目录不可写时自动 sudo）
 # 或从 https://github.com/icheer/brain-cli/releases 下载对应平台包
 go install github.com/icheer/brain-cli@latest   # 开发者
 

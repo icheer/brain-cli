@@ -13,6 +13,7 @@ description: 大模型网关外脑咨询工具。当需要复杂推理的交叉�
 
 ```bash
 bash "$(dirname "$SKILL_DIR")/install.sh"   # 或仓库 skills/brain/install.sh
+# 人类终端场景可加：--link（技能目录安装+全局软链，重装即全局升级）或 --global（仅全局安装）
 ```
 
 ## 第 1 步：自检

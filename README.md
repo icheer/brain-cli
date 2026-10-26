@@ -34,6 +34,8 @@
 ```bash
 # Install (pick one)
 bash skills/brain/install.sh        # skill scenario: download the binary into the skill dir from Releases (SHA256-verified)
+                                    #   append --link to also symlink it into /usr/local/bin (re-running upgrades both),
+                                    #   or --global to install there only (auto-sudo if not writable)
 # or grab your platform's package from https://github.com/icheer/brain-cli/releases
 go install github.com/icheer/brain-cli@latest   # developers
 
