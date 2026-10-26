@@ -32,7 +32,8 @@
 | reasoning_effort | opt-in 纯透传：`-e/--reasoning-effort` 设置才携带该字段；不设时字段缺席、各模型用自身默认；不校验枚举；不做厂商方言翻译（网关职责——实测网关已译 Anthropic 方言） |
 | `--json` 错误结构 | error 对象扩展 `type`（auth/model_not_found/rate_limited/timeout/upstream/network/invalid_request/config_missing/input_too_large/usage/interrupted）、`retryable`、`upstream_status`、`attempted_models`；纯增量，code/message 语义不变 |
 | 界面语言 | 中英双语（zh/en）：`BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（zh* → 中文，其他已设值 → 英文）> 时区偏移兜底（UTC+8 → 中文，否则英文；+8 区内无夏令时，按偏移判断免维护时区名清单）；语言随环境每次动态读取；stdout 模型正文永不翻译；Agent 分支以退出码与 --json 字段为准，不依赖 stderr 文案语言 |
-| 多模型编排 | `brain compare`：同一问题**并行独立采样** ≥2 个模型，原文按分隔头拼接（`--json` 为 `responses[]`），裁决与合成留给宿主（宿主自身是模型，不内建 judge）；别名在 compare 语境下是**模型组快捷方式**——`-m reason` 展开为该链全部模型（与 ask 的链首位+容灾语义不同，帮助文案写明）；每腿为具体模型**不做故障转移**（静默转移摧毁「谁回答了什么」的透明性），同模型重试仍允许；部分失败语义同 `ping -m`：≥1 腿成功 exit 0、失败腿 stderr+`--json` 明示，全失败按最可行动码（2>3>4>5）；`--blind` 输出匿名 `Model_A/B/…`（真名映射走 stderr，防宿主裁决的品牌偏见）；council（串行辩论）名称保留（第 8 节） |
+| 多模型编排 | `brain compare`：同一问题**并行独立采样** ≥2 个模型，原文按分隔头拼接（`--json` 为 `responses[]`），裁决与合成留给宿主（宿主自身是模型，不内建 judge）；别名在 compare 语境下是**模型组快捷方式**——`-m reason` 展开为该链全部模型（与 ask 的链首位+容灾语义不同，帮助文案写明）；每腿为具体模型**不做故障转移**（静默转移摧毁「谁回答了什么」的透明性），同模型重试仍允许；部分失败语义同 `ping -m`：≥1 腿成功 exit 0、失败腿 stderr+`--json` 明示，全失败按最可行动码（2>3>4>5）；`--blind` 输出匿名 `Model_A/B/…`（真名映射走 stderr，防宿主裁决的品牌偏见） |
+| 串行辩论（council） | `brain council -m … [-C 轮次，默认 2]`：2-N 个异构模型围绕固定上下文多轮讨论，裁决留宿主（同 compare 不内建裁判）。**混合拓扑**（M9，2026-10-26）：第 1 轮并行盲评（席位互不可见，消灭首轮锚定，复用 compare 并发）+ 第 2..C 轮蛇形串行（偶数轮反转，均衡先手/末位优势，C=2 时首列席位收尾）；发言记录扁平拼接递增、缺席留标记，**动态指令永远置于消息末尾**（严格前缀追加，命中网关 prompt caching）；每次发言告知席位与轮次，末轮为收尾指令（最终立场/观点变化/残余分歧）；`-C 1` 退化为串行 compare。**透镜=上下文**：席位-透镜表由调用方写进固定上下文（`-s` 追加在议事规则后），不做 persona 语法（`#` 等符号与真实模型 ID 撞车、短词语法表达力不足）；「虚拟伟人智囊团」提示词评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识），协调员/整合者不搬；`-m` 去重（model_name=席位唯一 ID，同模型不占两席——同权重分饰两角=左右互搏）。失败语义：单元素链同模型重试、**无跨模型故障转移**（席位中途换人=跨轮身份造假）；重试仍败记缺席退出，有效席位 <2 提前终止但已积累发言照常输出（exit 0，沉没成本保护）；全失败按最可行动码（复用 compare 排序）；SIGINT dump 已积累发言 + exit 130。`--timeout` 为单次发言预算（墙钟 ≈ C×timeout，总调用 = N×C）；stdout 按 `===== model: X \| round r =====` 时间序拼接，`--json`：status（completed/partial/interrupted/failed）/usage 合计/transcript[]（每次发言含 usage/latency/error）；`[PASS]` 提前共识退出、`--blind` 见第 8 节缓办项 |
 
 ## 1. 目标与非目标
 
@@ -118,7 +119,7 @@ aliases:
 - [x] `-i` 图片块在 content 数组中排在文本块之后；`-s` 可重复，以空行连接
 - [x] `-e / --reasoning-effort <档位>`：推理深度纯透传（第 0 节已定；不设则请求体无此字段，档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - [x] `--max-output-tokens <N>`：输出预算（max_tokens）纯透传（第 0 节修订后的例外；0=字段缺席用网关默认，负值 exit 1）
-- [x] `--extra-body <json|@file>` / `--extra-headers <json|@file>`（M8）：JSON 对象通用透传口，可重复有序合并（后者同名键覆盖）；保留字两级见第 0 节「采样参数」行（硬保留拒绝、软保留快车道优先，v0.8.1）；ask/compare 共有，compare 全腿共用同一份；`--dry-run` 展示合并结果
+- [x] `--extra-body <json|@file>` / `--extra-headers <json|@file>`（M8）：JSON 对象通用透传口，可重复有序合并（后者同名键覆盖）；保留字两级见第 0 节「采样参数」行（硬保留拒绝、软保留快车道优先，v0.8.1）；ask/compare/council 共有（compare 每腿 / council 每次发言共用同一份）；`--dry-run` 展示合并结果
 - [x] `--dry-run`：组装完成后输出最终 messages（单行 JSON，本地图片 data URL 截断展示），不发起网络请求；与 `--json`/`--stream` 互斥
 
 ### 3.2 输出
@@ -161,6 +162,7 @@ aliases:
 - [x] `brain ping -m <别名或ID>`：逐模型探测 fallback 链（各发一次极小补全请求；`/v1/models` 列出≠本 key 可用，探测才是硬证据）；链上至少一个可用即通过，主模型挂时 stderr 明示（防静默降级到次优模型）
 - [x] `ping --json` / `models --json`：机器可读输出（ping 成败恒定单对象，error 与 ask --json 同构；`ping -m` 时含 `probes` 数组：model / ok / latency_ms / error——逐模型探测结果无需解析 stderr）
 - [x] `brain compare`（M7）：`-m` 展开规则与失败语义见第 0 节「多模型编排」；无 `-m` 用 default_model 展开，展开后 <2 → exit 1；stdout 为成功腿的 `===== model: X =====` 分隔拼接（顺序=解析序而非完成序，失败腿不出现在 stdout，分隔头是语言中立的恒定契约不参与 i18n）；`--stream`/`--show-thinking` 不提供（多模型交错破坏 stdout 纯净）
+- [x] `brain council`（M9）：拓扑/透镜/失败语义见第 0 节「串行辩论（council）」行；stdout 为成功发言的 `===== model: X | round r =====` 时间序拼接（缺席不出现在 stdout，发言记录内留缺席标记供后续席位可见、stderr 与 `--json` 明示）；`--stream`/`--show-thinking`/`--blind` 不提供（v1，见第 8 节）
 
 ## 5. 分发与工程化
 - [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（配置已过 `goreleaser check`，待首个 tag 全链路验证）
@@ -212,6 +214,11 @@ aliases:
   - e2e（真实网关，2026-10-26）：temperature 透传被接受；`response_format:json_object` 在 sh/deepseek-v4.1-flash 上真实生效（返回合法 JSON）；自定义 UA 请求成功；保留字拒绝零成本生效
   - 设计取舍：用户独立提出与 OpenAI SDK extra_body/extra_headers 同构的方案——一次性终结参数枚举军备竞赛，网关侧新参数/厂商私有字段永远无需跟版；`--output-schema` 专项 flag 取消（`--extra-body '{"response_format":…}'` 覆盖该场景）；此前讨论过的 `--json-object` 也无需独立 flag
   - v0.8.1 修订：`reasoning_effort`/`max_tokens` 从硬保留字改为**快车道优先**（用户决策：`-参数` 只做高频快车道，与 extras 同名时以 flag 为准 + stderr 提示）——拒绝清单只留生命线字段，逃生口不再拒绝合法参数
+- **M9**：`brain council` 串行辩论（混合拓扑：首轮并行盲评 + 蛇形串行交锋）
+  - 状态（2026-10-26）：**功能完成**，单测全绿（含 -race）——stdout 逐字节时间序拼接、首轮盲评互不可见、蛇形与 C=3 指令分层（增量轮/收尾轮）、缺席早期终止（status=partial）与中途缺席标记进入后续发言、全失败 401→exit 2、usage 合计、dry-run 蛇形调度表、互斥与轮次校验；决策见第 0 节「串行辩论（council）」行
+  - e2e（真实网关，2026-10-26）：2 席位×2 轮实弹（deepseek 挂安全透镜 vs gemini 挂性能透镜，透镜经 `-s` 席位-透镜表注入）——首轮两席位确实各按透镜独立立论；次轮逐点交锋且各有真实自我修正（gemini 收回「网盘直同步」、deepseek 收回「进程边界即信任边界」等三处），末轮产出最终立场与未解分歧清单；194.9s、4/4 发言、exit 0、逐发言 usage 可见
+  - 来源：用户设计（固定上下文+递增发言+轮次预算告知+原文交宿主裁决）× 双通道评审（本地 + `cpa/gemini-4-argon-high` 两轮独立）交叉收敛；混合拓扑/前缀缓存布局/强制交锋指令为 Argon 增量，透镜=上下文为三方收敛（Argon 自我推翻其 `-m "model#lens"` 提案）
+  - 设计取舍：拒绝 per-seat fallback（席位换人=跨轮身份造假，compare 无转移先例延伸）；拒绝 `--max-tokens-per-turn` 默认值（违背纯透传，`--max-output-tokens` 现成）；拒绝 XML 输出标签（沿用 `=====` 家族契约）；拒绝 partial → exit 2（破坏 3.3 退出码表）；fyi.md「虚拟伟人智囊团」persona 评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识→收尾指令），不搬伟人池/协调员/整合者（内建裁判）与状态机交互（flag 即交互协议）
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 
@@ -219,8 +226,9 @@ aliases:
 1. **网关密钥发放**：若网关目前只有一把共享 key，公开分发前需先支持按用户发 key（网关侧配套工作，需确认可行性与时间点）
 2. Windows 真机测试环境来源
 3. **图像生成（`brain draw`）暂缓**（2026-10-26）：构想与设计草案已收敛——定位扩展为「外脑 = 咨询 + 生成」（均为单次无状态调用，不违背「不做 Function Calling」）；基建复用约九成（别名链/退出码/`--json`/心跳/分发）；关键取舍：draw 不回退 default_model（chat 语义），无 `-m` 时找 `image` 别名再无则报错；stdout 输出图片字节（`brain draw "..." > cat.png`，URL 形态自动下载后输出、b64 解码）；n=1 固定单张；`--size` 等 opt-in 纯透传。暂缓原因：实测本网关 new-api 对 `/v1/images/generations` 疑似把绘图请求转成聊天格式发给上游图像模型、上游 400（探测确认路由存在：503 model_not_found ≠ 404，但转换损坏只有实弹能暴露）——属网关侧问题，升级 new-api / 修正渠道路由后可重启
-4. **`brain council`（串行辩论/头脑风暴原语，名称已保留）**：与 `brain compare`（并行独立采样、各说各话一轮）相对——council 让 n 个模型**串行依次发言**，上下文随发言递增，后发言者可见并可评价先发言者的观点，形成多轮递进的辩论/头脑风暴。不违背无状态铁律（辩论状态只在单次调用进程内存在，跨调用零状态），但需第 0 节新增「多模型编排」决策行。暂缓原因：① 成本超线性——每轮发言都携带完整辩论记录，推理模型尤甚；② 序位效应——先发言者锚定全场、末位发言者成隐形裁决者，多模型辩论存在「礼貌性收敛」退化风险，需发言顺序轮换/末位总结者等机制设计；③ 中途失败恢复语义复杂（前序发言已付费，续跑还是作废）。等 compare 验证「多模型采样」的真实使用频率后再评估
+4. **`brain council`（串行辩论原语）已落地（2026-10-26，M9）**：决策移入第 0 节「串行辩论（council）」行；原三担忧的对策内化——成本超线性→混合拓扑 + C 默认 2 + 成本公式入 help/SKILL；序位效应→首轮盲评 + 蛇形轮换 + 不设指定总结者；中途失败→缺席退出 + 沉没成本保护。缓办项见第 6 条
 5. **alias 角色预设（system/`-e`/max_tokens 绑进别名段）拒绝**（2026-10-26）：同一模型在不同场景下的预设是多变的，预设系统提示词没有稳定复用价值——`-s` 的临时性即正确形态（第三轮双外脑评审 Opus personas 独立段 / Gemini P2 角色钢印两个形态均被用户否决）。若未来出现真实复用需求再议
+6. **council 缓办项**（2026-10-26）：`[PASS]` 提前共识退出（需标记解析协议且动摇固定预算可预测性，待真实使用暴露轮次浪费再议）；`--blind` 匿名（辩论语境的礼貌性收敛可能比 compare 更需要匿名，v1 未提供）；persona 语法（透镜=上下文已覆盖；`-m "model#lens"` 因符号与真实模型 ID 撞车、短词表达力不足被拒；同模型分饰正反方因 `-m` 去重语义不支持——同权重共享盲区，宿主可用单模型 ask + 圆桌提示词自演）
 
 > 2026-10-24 已拍板并移入第 0 节：base_url 默认值（公开 release 不带）、fallback 触发范围、输出不做 `-o`、`--json` 失败语义、采样参数不透传、models.yaml 可选、工程骨架选型。
 > 2026-10-26 已拍板并移入第 0 节：配置文件布局合并（单文件 config.yaml，原「models.yaml 可选」随之更名「aliases 段缺失」）。

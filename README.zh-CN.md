@@ -11,6 +11,7 @@
 - **Agent-Friendly**：stdout 只输出模型正文，元数据/警告/心跳全走 stderr；管道 / `-f` 多文件 / `-i` 图片多模态输入开箱即用
 - **模型别名路由**：`fast` / `reason` / `coding` / `vision` 别名 + 自动故障转移（重试退避、换链上模型、stderr 提示），Agent 无需记忆模型名
 - **并行交叉验证**：`brain compare -m a,b -m reason` 同题并发多模型，原文按 `===== model: X =====` 分隔头拼接（`--json` 为 `responses[]`）；compare 里别名=模型组快捷方式，每腿不做故障转移；`--blind` 输出匿名 Model_A/B 防裁决的品牌偏见
+- **串行辩论 `brain council`**：N 个模型围绕同一议题多轮讨论——第 1 轮并行盲评（消灭首轮锚定），后续蛇形串行、发言记录逐轮递增（后发言者可评价先发言者，末轮总结各方立场/变化/未解分歧）；立场视角无需专用语法，「席位-透镜表」写进上下文即是协议；席位只做同模型重试（中途换人=身份造假），缺席留标记，已积累发言不因提前终止/SIGINT 丢失
 - **可选推理深度与输出预算**：`-e low|medium|high|…`、`--max-output-tokens N` 纯透传（不设则各模型/网关默认；档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - **通用透传口 `--extra-body` / `--extra-headers`**：任意请求体参数（temperature、response_format、厂商私有字段…）与 HTTP 头以 JSON 顶层 assign 透传（内联或 `@file`，可重复有序合并）；保留字拒绝防自毁，`--dry-run` 可核对合并结果；对齐 OpenAI SDK 的 extra_body/extra_headers
 - **可解析**：退出码 0-7 / 130 全量语义；`--json` 成败恒定输出单对象（`jq` 无条件解析，`error.code` 与退出码一致）
@@ -69,7 +70,7 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 
 ## 状态与路线
 
-**:rocket: v0.8.0 已发布**（M0–M8）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.8.1 已发布**（M0–M8）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -82,3 +83,4 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 | M6 | 界面双语（zh/en）：locale / `BRAIN_LANG` / UTC+8 时区检测；README 中英双语 | ✅ 完成 |
 | M7 | `brain compare` 并行独立采样（别名=模型组快捷方式、每腿无故障转移、≥1 成功即 exit 0）/ `--blind` 匿名盲测 | ✅ 完成 |
 | M8 | `--extra-body` / `--extra-headers` 通用透传口（JSON 顶层 assign、保留字拒绝、`@file`、`--dry-run` 可见） | ✅ 完成 |
+| M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护） | ✅ 完成 |

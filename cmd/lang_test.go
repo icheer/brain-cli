@@ -11,6 +11,7 @@ func TestEnglishMessages(t *testing.T) {
 	// cobra 复用命令对象，先清掉其他测试残留的 flag 值（本测试不经 setupConfig）
 	askOpts = askOptions{}
 	compareOpts = compareOptions{}
+	councilOpts = councilOptions{rounds: 2} // rounds 有非零默认值，重置须保留
 	t.Setenv("BRAIN_LANG", "en")
 	t.Setenv("BRAIN_CONFIG", filepath.Join(t.TempDir(), "absent.yaml"))
 	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY"} {

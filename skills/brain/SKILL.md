@@ -30,6 +30,7 @@ stdout 逐行输出 OK；按 exit code 处理失败（7=配置缺失，按 stder
 
 **调用**：
 - 复杂推理结论需要交叉验证（`-m reason`）；要跨厂商多模型互证一发搞定用 `brain compare`（费用×腿数，慎用）
+- 各说各话不够、需要模型间**交锋与自我修正**时用 `brain council`（串行辩论；费用随轮次超线性，一次任务 ≤1 次）
 - 代码审查想要第二意见（`-m coding`）
 - 图表/截图/架构图解析（`-m vision`）
 - 尝试多种方案均失败、陷入循环，需要外部视角破局
@@ -67,6 +68,14 @@ brain compare -m reason -m coding "方案A的并发风险在哪"      # stdout �
 brain compare -m reason --json "推演方案" | jq -r '.responses[] | select(.ok) | .content'
 brain compare -m reason --blind "结论可靠吗"                 # 匿名 Model_A/B，防你偏向同厂牌答案
 
+# 串行辩论：第 1 轮并行盲评（互不可见）+ 第 2 轮蛇形交锋（末轮自动收尾）
+brain council -m reason -m coding "评审方案A的取舍"          # stdout 按 ===== model: X | round r ===== 时间序拼接
+brain council -m reason -C 3 "深挖这个架构决策的分歧"         # -C 3 在盲评与收尾之间加一轮增量交锋
+brain council -m reason --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'
+
+# 立场/视角（透镜）无专用语法：席位-透镜表写进 -s，各席位自会对号入座
+brain council -m m-a -m m-b -s "席位-透镜表：m-a 从安全与边界防御视角；m-b 从性能与快速交付视角" "……"
+
 # 任意请求参数透传（temperature/top_k/response_format/厂商私有字段…）
 brain ask -m reason --extra-body '{"temperature":0.3,"top_k":50}' "推演"
 brain ask -m fast --extra-body '{"response_format":{"type":"json_object"}}' "输出JSON：{...}"   # 结构化输出
@@ -85,6 +94,8 @@ brain ask -m fast --extra-headers '{"X-Tenant":"a"}' "..."    # 附加 HTTP 头�
 - stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
 - `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
 - **compare 是并发原语**：同题并行发给 N 个模型，费用与输入×腿数；≥1 腿成功即 exit 0，失败腿在 stderr 与 `responses[]` 中明示；compare 语境下别名展开为整组且**无故障转移**（静默转移会摧毁「谁回答了什么」）；裁决由你做，brain 不内建裁判——对比原文后自己下结论，节流比 ask 更严（一次任务 ≤2 次）
+- **council 是串行原语**：总调用 = 席位×轮次、墙钟 ≈ 轮次×`--timeout`（单次发言预算，宿主 Bash 超时按此量级给足）；第 r 轮输入 ≈ 固定上下文 + (r-1)×N 次发言，费用超线性，节流比 compare 更严（一次任务 ≤1 次）；席位只做同模型重试、无跨模型故障转移，缺席在记录/stderr/`--json` 明示且不丢已积累发言（提前终止/中断也照常输出）
+- **裁决 council 输出**：末轮发言自带各方最终立场与未解分歧，按「共鸣点（隐性共识）/断层线（根本分歧，常见根源是目标函数不同）」归纳；缺席席位意味着样本不齐，降低对应结论的置信度
 - **--extra-body / --extra-headers 保留字**：body 的 model/messages/stream/stream_options 与 headers 的 Authorization/Content-Type/Accept 会被 exit 1 拒绝（防静默覆盖生命线字段）；reasoning_effort/max_tokens 可经 extra 传，但与 `-e`/`--max-output-tokens` 同名时**以 flag 为准**（stderr 有提示）；效果取决于上游模型支持，网关 400 即报；发前 `--dry-run` 核对合并结果；compare 里全腿共用同一份 extras（跨厂商腿可能各自 400，权衡在调用方）
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
 - **stderr 文案语言随环境自动中英切换**（`BRAIN_LANG` / locale / UTC+8 时区）；你的判断一律以退出码与 `--json` 字段为准，不要匹配 stderr 文案

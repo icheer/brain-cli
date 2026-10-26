@@ -3,7 +3,8 @@
 # 用法：复制到 `brain config path` 显示的位置并按需修改（或直接 brain init 交互生成），
 # 整个文件含密钥，权限保持 0600，永不提交进仓库。
 # 别名链 models 前者为主，故障自动切换后者（M1 起生效）；
-# compare 语境下别名整组并行采样且无故障转移（brain compare -m reason，见 DESIGN 第 0 节）；
+# compare 语境下别名整组并行采样且无故障转移（brain compare -m reason）；
+# council 语境下同为组快捷方式（brain council -m panel 即整组入席辩论）；
 # use 为场景标注，供 `brain models` 展示与 SKILL.md 描述参考。
 # 下方示例模型 ID 来自本项目的测试网关，请换成你自己网关的模型。
 #
@@ -32,4 +33,4 @@ aliases:
     use: "图表/截图解析"
   panel:
     models: [aihub/gpt-6-astra, anti/gemini-3.8-flash, claude-opus-5-5]
-    use: "并行交叉验证面板（brain compare -m panel 一发比对整组）"
+    use: "交叉验证面板（compare 一发比对整组 / council 整组入席辩论）"

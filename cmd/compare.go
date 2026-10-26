@@ -491,32 +491,15 @@ func runCompare(cmd *cobra.Command, args []string) (retErr error) {
 	return nil
 }
 
-// compareWorstCode 全失败时挑「最可行动」退出码：认证(2) > 限流(3) > 超时(4) > 上游(5)。
+// compareWorstCode 全失败时挑「最可行动」退出码（排序逻辑见 council.go 的 worstErrCode）。
 func compareWorstCode(legs []compareLeg) int {
-	rank := func(c int) int {
-		switch c {
-		case exitcode.Auth:
-			return 0
-		case exitcode.RateLimit:
-			return 1
-		case exitcode.Timeout:
-			return 2
-		case exitcode.Upstream:
-			return 3
-		}
-		return 4
-	}
-	best, bestRank := exitcode.Upstream, 1<<30
+	errs := make([]error, 0, len(legs))
 	for i := range legs {
-		if legs[i].OK {
-			continue
-		}
-		c := exitCodeFor(legs[i].Err)
-		if r := rank(c); r < bestRank {
-			best, bestRank = c, r
+		if !legs[i].OK {
+			errs = append(errs, legs[i].Err)
 		}
 	}
-	return best
+	return worstErrCode(errs)
 }
 
 // firstLine 取错误首行（StatusError 的响应体片段可能含换行，stderr/JSON 里要单行）。

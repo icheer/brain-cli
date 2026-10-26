@@ -58,7 +58,7 @@ var (
 
 func init() {
 	rootCmd.SetVersionTemplate("brain " + version + " (commit " + commit + ")\n")
-	rootCmd.AddCommand(askCmd, compareCmd, modelsCmd, configCmd)
+	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, modelsCmd, configCmd)
 }
 
 func Execute() {
