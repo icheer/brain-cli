@@ -48,6 +48,21 @@ brain ping
 brain ask -m fast "introduce yourself in one sentence"   # -m also accepts literal model IDs; -e low/medium/high… tunes reasoning effort (optional)
 ```
 
+```bash
+# Multi-model cross-checks — adjudication is always yours (brain ships no built-in judge)
+
+# Parallel: same question to N models at once, replies under ===== model: X ===== headers
+brain compare -m reason "stress-test this conclusion"
+brain compare -m reason --json "stress-test this conclusion" | jq -r '.responses[] | select(.ok) | .content'
+
+# Serial debate (council): round 1 blind-parallel, then snake-serial rounds with a growing
+# transcript — later speakers critique earlier ones; the final round states each seat's
+# position, what changed, unresolved disagreements. Total calls = models × rounds.
+brain council -m reason -m coding "should this design adopt SQLite for storage"
+# Lenses/stances are just context: write a seat-to-lens table via -s, seats pick up their own
+brain council -m panel -s "seat lenses: aihub/gpt-6-astra = security & failure isolation; anti/gemini-3.8-flash = performance & delivery speed" "same question"
+```
+
 For agents: copy or link `skills/brain/` into `.claude/skills/` (or `.agents/skills/`); SKILL.md teaches the host agent when to call brain, how, and when not to.
 
 ## brain vs. host subagents

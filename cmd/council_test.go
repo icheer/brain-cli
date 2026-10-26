@@ -329,6 +329,39 @@ func TestCouncilJSONUsageSum(t *testing.T) {
 	}
 }
 
+// 模板语言跟随内容而非 locale（本测试环境 BRAIN_LANG=zh）：英文材料 → 英文模板，
+// 中文材料 → 中文模板（既有用例的「这是第 N/」断言即中文路径）。
+func TestCouncilTemplateLanguage(t *testing.T) {
+	srv, seen := fakeCouncilGateway(t, nil)
+	setupConfig(t, srv.URL+"/v1")
+
+	code, _, _ := runBrain("council", "-m", "fast", "What storage engine for a personal knowledge base?")
+	if code != 0 {
+		t.Fatal("code != 0")
+	}
+	if len(*seen) != 4 {
+		t.Fatalf("应 4 次调用: %d", len(*seen))
+	}
+	for _, req := range *seen {
+		if strings.Contains(req.Body, "这是第") || strings.Contains(req.Body, "席位") || strings.Contains(req.Body, "议会") {
+			t.Fatalf("英文材料应用英文模板: %s", req.Body)
+		}
+		if !strings.Contains(req.Body, "round 1/2") && !strings.Contains(req.Body, "round 2/2") {
+			t.Fatalf("应有英文轮次指令: %s", req.Body)
+		}
+	}
+	// 中文占比>2% 即中文（含 -s 透镜表）：英文正文 + 中文透镜表应选中文模板
+	councilOpts = councilOptions{rounds: 2}
+	code, out, _ := runBrain("council", "-m", "fast", "--dry-run",
+		"-s", "席位-透镜表：m-a 从安全视角；m-b 从性能视角", "Design review question about caching layers")
+	if code != 0 {
+		t.Fatal("code != 0")
+	}
+	if !strings.Contains(out, "议会") {
+		t.Fatal("中文透镜表应触发中文模板")
+	}
+}
+
 // --dry-run：零请求；输出模型组、轮次调度表（蛇形）、议事规则与首位席位实际 messages。
 func TestCouncilDryRun(t *testing.T) {
 	srv, seen := fakeCouncilGateway(t, nil)

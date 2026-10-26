@@ -102,8 +102,8 @@ func init() {
 		i18n.T("模型别名（展开为整组）或字面模型 ID，可重复且支持逗号分隔；至少展开出 2 个模型",
 			"model alias (expands to its whole group) or literal model ID; repeatable, comma-separated; must resolve to >= 2 models"))
 	councilCmd.Flags().IntVarP(&councilOpts.rounds, "rounds", "C", 2,
-		i18n.T("轮次预算，每席位每轮发言一次（默认 2：并行立论 + 蛇形交锋收尾；1=退化为串行 compare）",
-			"round budget; each seat speaks once per round (default 2: blind-parallel opening + snake-serial closing; 1 degenerates into a serial compare)"))
+		i18n.T("轮次预算，每席位每轮发言一次（默认 2：并行立论 + 蛇形交锋收尾；1=单轮并行盲评，等价 compare）",
+			"round budget; each seat speaks once per round (default 2: blind-parallel opening + snake-serial closing; 1 = a single blind-parallel round, equivalent to compare)"))
 	councilCmd.Flags().StringArrayVarP(&councilOpts.files, "file", "f", nil,
 		i18n.T("文本文件，可多次", "text file, repeatable"))
 	councilCmd.Flags().StringArrayVarP(&councilOpts.images, "image", "i", nil,
@@ -183,9 +183,44 @@ type councilDryRunOut struct {
 	Messages        []gateway.Message `json:"messages"` // 首位席位第 1 轮的实际 messages
 }
 
+// councilLang 决定议事/指令模板的语言（zh=true）。模板与透镜表同入上下文，
+// 语言应跟随材料而非系统 locale：调用方上下文 + -s 的汉字占比 >2% 即中文，否则英文
+// （stderr 提示仍走 i18n 检测链，两者互不相干；第 0 节「串行辩论」行）。
+type councilLang bool
+
+func (l councilLang) T(zh, en string) string {
+	if l {
+		return zh
+	}
+	return en
+}
+
+func (l councilLang) Tf(zh, en string, a ...any) string {
+	if l {
+		return fmt.Sprintf(zh, a...)
+	}
+	return fmt.Sprintf(en, a...)
+}
+
+// chineseRatio 统计 CJK 汉字占全部 rune 的比例（含扩展 A 区与兼容表意区）。
+func chineseRatio(s string) float64 {
+	total, cjk := 0, 0
+	for _, r := range s {
+		total++
+		switch {
+		case r >= 0x4E00 && r <= 0x9FFF, r >= 0x3400 && r <= 0x4DBF, r >= 0xF900 && r <= 0xFAFF:
+			cjk++
+		}
+	}
+	if total == 0 {
+		return 0
+	}
+	return float64(cjk) / float64(total)
+}
+
 // councilRules 生成议事规则（system 消息，整场静态）。用户 -s 追加在其后（透镜表等）。
-func councilRules(seats []string, rounds int, extra string) string {
-	s := i18n.Tf(`你是一场多模型议会（council）的参与者：多个异构大模型围绕同一背景材料进行多轮讨论，发言记录逐轮递增，后发言者可评价先发言者。议事规则：
+func councilRules(seats []string, rounds int, extra string, lang councilLang) string {
+	s := lang.Tf(`你是一场多模型议会（council）的参与者：多个异构大模型围绕同一背景材料进行多轮讨论，发言记录逐轮递增，后发言者可评价先发言者。议事规则：
 - 与会席位共 %d 个：%s；总轮次 %d 轮，每个席位每轮发言一次。
 - 每轮消息末尾会告知你：你的席位、当前轮次与本轮任务。
 - 第 1 轮为独立立论（席位间互不可见）；第 2 轮起可见上方完整发言记录（含缺席标记）。
@@ -198,7 +233,7 @@ func councilRules(seats []string, rounds int, extra string) string {
 - From round 2 on, output increments only: blind spots and hidden assumptions in earlier speeches, new perspectives, revisions of your own view; no consensus-restating, no empty agreement.
 - If the background material assigns your seat an analysis lens or stance, reason with its underlying methodology for real — no mannerisms, no stock quotes.
 - Be sharp and concise; all speeches are delivered verbatim to the convener for adjudication.`,
-		len(seats), strings.Join(seats, i18n.T("、", ", ")), rounds)
+		len(seats), strings.Join(seats, lang.T("、", ", ")), rounds)
 	if extra != "" {
 		s += "\n\n" + extra
 	}
@@ -206,51 +241,51 @@ func councilRules(seats []string, rounds int, extra string) string {
 }
 
 // councilInstruction 生成置于消息末尾的动态指令（前缀缓存友好：静态前缀之后仅此段变化）。
-func councilInstruction(seat string, round, rounds int) string {
+func councilInstruction(seat string, round, rounds int, lang councilLang) string {
 	if round == 1 {
-		return i18n.Tf(`你是席位「%s」。议会共 %d 轮，每席位每轮发言一次；这是第 1/%d 轮（独立立论）：你还看不到其他席位的发言，请基于上述背景独立阐述你的核心观点与论证。`,
+		return lang.Tf(`你是席位「%s」。议会共 %d 轮，每席位每轮发言一次；这是第 1/%d 轮（独立立论）：你还看不到其他席位的发言，请基于上述背景独立阐述你的核心观点与论证。`,
 			`You are seat "%s". The council runs %d rounds, each seat speaking once per round; this is round 1/%d (independent opening): you cannot see the other seats' speeches yet — state your core position and reasoning on the topic above, independently.`,
 			seat, rounds, rounds)
 	}
 	if round == rounds {
-		return i18n.Tf(`你是席位「%s」。这是第 %d/%d 轮（最后一轮）。请先回应前序发言——指出盲点、隐含假设或逻辑脆弱处，补充新视角，或修正自己此前的观点；再收尾：给出你的最终立场，说明观点是否因讨论而改变，点出你认为仍未解决的核心分歧。不要复述已有内容。`,
+		return lang.Tf(`你是席位「%s」。这是第 %d/%d 轮（最后一轮）。请先回应前序发言——指出盲点、隐含假设或逻辑脆弱处，补充新视角，或修正自己此前的观点；再收尾：给出你的最终立场，说明观点是否因讨论而改变，点出你认为仍未解决的核心分歧。不要复述已有内容。`,
 			`You are seat "%s". This is round %d/%d (the final round). First respond to the earlier speeches — blind spots, hidden assumptions, weak logic, new perspectives, or revisions to your own position; then close: state your final position, whether the discussion changed your view, and the core disagreements you consider unresolved. Do not restate prior content.`,
 			seat, round, rounds)
 	}
-	return i18n.Tf(`你是席位「%s」。这是第 %d/%d 轮。上方是完整发言记录（含缺席标记），请只输出增量：指出前序发言的盲点、隐含假设或逻辑脆弱处，补充新视角，或修正自己此前的观点；不要复述已有共识，不要无意义附和。`,
+	return lang.Tf(`你是席位「%s」。这是第 %d/%d 轮。上方是完整发言记录（含缺席标记），请只输出增量：指出前序发言的盲点、隐含假设或逻辑脆弱处，补充新视角，或修正自己此前的观点；不要复述已有共识，不要无意义附和。`,
 		`You are seat "%s". This is round %d/%d. Above is the full transcript (absences marked); output increments only: blind spots, hidden assumptions or weak logic in earlier speeches, new perspectives, or revisions to your own position; do not restate consensus or add empty agreement.`,
 		seat, round, rounds)
 }
 
 // councilTranscriptPart 组装 user 消息的末尾文本块：发言记录 + 动态指令。
 // 发言记录按时间序追加、缺席留标记；动态指令永远收尾（第 0 节：严格前缀追加，命中网关 prompt caching）。
-func councilTranscriptPart(seat string, round, rounds int, transcript []councilSpeech) gateway.ContentPart {
+func councilTranscriptPart(seat string, round, rounds int, transcript []councilSpeech, lang councilLang) gateway.ContentPart {
 	var b strings.Builder
 	if len(transcript) > 0 {
-		b.WriteString(i18n.T("===== 发言记录 =====\n", "===== transcript =====\n"))
+		b.WriteString(lang.T("===== 发言记录 =====\n", "===== transcript =====\n"))
 		for _, sp := range transcript {
 			if sp.OK {
-				b.WriteString(i18n.Tf("----- 席位 %s（第 %d 轮）-----\n", "----- seat %s (round %d) -----\n", sp.Model, sp.Round))
+				b.WriteString(lang.Tf("----- 席位 %s（第 %d 轮）-----\n", "----- seat %s (round %d) -----\n", sp.Model, sp.Round))
 				if c := strings.TrimSpace(sp.Content); c != "" {
 					b.WriteString(c)
 					b.WriteString("\n\n")
 				}
 			} else {
-				b.WriteString(i18n.Tf("----- 席位 %s（第 %d 轮发言失败，缺席退出）-----\n",
+				b.WriteString(lang.Tf("----- 席位 %s（第 %d 轮发言失败，缺席退出）-----\n",
 					"----- seat %s (failed in round %d; absent thereafter) -----\n", sp.Model, sp.Round))
 			}
 		}
 	}
-	b.WriteString(councilInstruction(seat, round, rounds))
+	b.WriteString(councilInstruction(seat, round, rounds, lang))
 	return gateway.ContentPart{Type: "text", Text: b.String()}
 }
 
 // buildCouncilMessages 为某席位某轮组装 messages：
 // system=议事规则（+ -s 追加）；user=固定上下文（文本+图片）+ 发言记录 + 末尾动态指令。
-func buildCouncilMessages(rules string, ctxParts []gateway.ContentPart, seat string, round, rounds int, transcript []councilSpeech) []gateway.Message {
+func buildCouncilMessages(rules string, ctxParts []gateway.ContentPart, seat string, round, rounds int, transcript []councilSpeech, lang councilLang) []gateway.Message {
 	parts := make([]gateway.ContentPart, 0, len(ctxParts)+1)
 	parts = append(parts, ctxParts...)
-	parts = append(parts, councilTranscriptPart(seat, round, rounds, transcript))
+	parts = append(parts, councilTranscriptPart(seat, round, rounds, transcript, lang))
 	return []gateway.Message{
 		{Role: "system", Content: rules},
 		{Role: "user", Content: parts},
@@ -405,7 +440,16 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			}
 		}
 	}
-	rules := councilRules(models, councilOpts.rounds, strings.Join(councilOpts.system, "\n\n"))
+	// 模板语言跟随内容（含 -s 透镜表）：汉字占比 >2% 即中文模板，否则英文
+	var textSample string
+	for _, p := range ctxParts {
+		if p.Type == "text" {
+			textSample = p.Text
+			break
+		}
+	}
+	lang := councilLang(chineseRatio(textSample+"\n"+strings.Join(councilOpts.system, "\n\n")) > 0.02)
+	rules := councilRules(models, councilOpts.rounds, strings.Join(councilOpts.system, "\n\n"), lang)
 
 	if councilOpts.dryRun {
 		schedule := make([][]string, 0, councilOpts.rounds)
@@ -426,7 +470,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			TextBytes:       textBytes,
 			System:          rules,
 			Schedule:        schedule,
-			Messages:        redactMessages(buildCouncilMessages(rules, ctxParts, models[0], 1, councilOpts.rounds, nil)),
+			Messages:        redactMessages(buildCouncilMessages(rules, ctxParts, models[0], 1, councilOpts.rounds, nil, lang)),
 		})
 		fmt.Fprintln(stdout, string(out))
 		return nil
@@ -474,7 +518,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 		defer cancel()
 		eng := &app.AskEngine{Client: client, Stderr: engineStderr, RetryMax: cfg.RetryMax}
 		start := time.Now()
-		msgs := buildCouncilMessages(rules, ctxParts, seat, round, councilOpts.rounds, transcript)
+		msgs := buildCouncilMessages(rules, ctxParts, seat, round, councilOpts.rounds, transcript, lang)
 		res, _, err := eng.Ask(ctx, []string{seat},
 			func(m string) gateway.ChatRequest {
 				return gateway.ChatRequest{

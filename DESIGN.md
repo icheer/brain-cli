@@ -33,7 +33,7 @@
 | `--json` 错误结构 | error 对象扩展 `type`（auth/model_not_found/rate_limited/timeout/upstream/network/invalid_request/config_missing/input_too_large/usage/interrupted）、`retryable`、`upstream_status`、`attempted_models`；纯增量，code/message 语义不变 |
 | 界面语言 | 中英双语（zh/en）：`BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（zh* → 中文，其他已设值 → 英文）> 时区偏移兜底（UTC+8 → 中文，否则英文；+8 区内无夏令时，按偏移判断免维护时区名清单）；语言随环境每次动态读取；stdout 模型正文永不翻译；Agent 分支以退出码与 --json 字段为准，不依赖 stderr 文案语言 |
 | 多模型编排 | `brain compare`：同一问题**并行独立采样** ≥2 个模型，原文按分隔头拼接（`--json` 为 `responses[]`），裁决与合成留给宿主（宿主自身是模型，不内建 judge）；别名在 compare 语境下是**模型组快捷方式**——`-m reason` 展开为该链全部模型（与 ask 的链首位+容灾语义不同，帮助文案写明）；每腿为具体模型**不做故障转移**（静默转移摧毁「谁回答了什么」的透明性），同模型重试仍允许；部分失败语义同 `ping -m`：≥1 腿成功 exit 0、失败腿 stderr+`--json` 明示，全失败按最可行动码（2>3>4>5）；`--blind` 输出匿名 `Model_A/B/…`（真名映射走 stderr，防宿主裁决的品牌偏见） |
-| 串行辩论（council） | `brain council -m … [-C 轮次，默认 2]`：2-N 个异构模型围绕固定上下文多轮讨论，裁决留宿主（同 compare 不内建裁判）。**混合拓扑**（M9，2026-10-26）：第 1 轮并行盲评（席位互不可见，消灭首轮锚定，复用 compare 并发）+ 第 2..C 轮蛇形串行（偶数轮反转，均衡先手/末位优势，C=2 时首列席位收尾）；发言记录扁平拼接递增、缺席留标记，**动态指令永远置于消息末尾**（严格前缀追加，命中网关 prompt caching）；每次发言告知席位与轮次，末轮为收尾指令（最终立场/观点变化/残余分歧）；`-C 1` 退化为串行 compare。**透镜=上下文**：席位-透镜表由调用方写进固定上下文（`-s` 追加在议事规则后），不做 persona 语法（`#` 等符号与真实模型 ID 撞车、短词语法表达力不足）；「虚拟伟人智囊团」提示词评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识），协调员/整合者不搬；`-m` 去重（model_name=席位唯一 ID，同模型不占两席——同权重分饰两角=左右互搏）。失败语义：单元素链同模型重试、**无跨模型故障转移**（席位中途换人=跨轮身份造假）；重试仍败记缺席退出，有效席位 <2 提前终止但已积累发言照常输出（exit 0，沉没成本保护）；全失败按最可行动码（复用 compare 排序）；SIGINT dump 已积累发言 + exit 130。`--timeout` 为单次发言预算（墙钟 ≈ C×timeout，总调用 = N×C）；stdout 按 `===== model: X \| round r =====` 时间序拼接，`--json`：status（completed/partial/interrupted/failed）/usage 合计/transcript[]（每次发言含 usage/latency/error）；`[PASS]` 提前共识退出、`--blind` 见第 8 节缓办项 |
+| 串行辩论（council） | `brain council -m … [-C 轮次，默认 2]`：2-N 个异构模型围绕固定上下文多轮讨论，裁决留宿主（同 compare 不内建裁判）。**混合拓扑**（M9，2026-10-26）：第 1 轮并行盲评（席位互不可见，消灭首轮锚定，复用 compare 并发）+ 第 2..C 轮蛇形串行（偶数轮反转，均衡先手/末位优势，C=2 时首列席位收尾）；发言记录扁平拼接递增、缺席留标记，**动态指令永远置于消息末尾**（严格前缀追加，命中网关 prompt caching）；每次发言告知席位与轮次，末轮为收尾指令（最终立场/观点变化/残余分歧）；`-C 1` 即单轮并行盲评（等价 compare）。**透镜=上下文**：席位-透镜表由调用方写进固定上下文（`-s` 追加在议事规则后），不做 persona 语法（`#` 等符号与真实模型 ID 撞车、短词语法表达力不足）；「虚拟伟人智囊团」提示词评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识），协调员/整合者不搬；`-m` 去重（model_name=席位唯一 ID，同模型不占两席——同权重分饰两角=左右互搏）。失败语义：单元素链同模型重试、**无跨模型故障转移**（席位中途换人=跨轮身份造假）；重试仍败记缺席退出，有效席位 <2 提前终止但已积累发言照常输出（exit 0，沉没成本保护）；全失败按最可行动码（复用 compare 排序）；SIGINT dump 已积累发言 + exit 130。`--timeout` 为单次发言预算（墙钟 ≈ C×timeout，总调用 = N×C）；**模板语言跟随内容**：议事/指令模板与透镜表同入上下文，语言取自材料而非系统 locale——调用方上下文 + `-s` 的汉字占比 >2% 即中文模板，否则英文（stderr 提示仍走 i18n 检测链，两者互不相干）；stdout 按 `===== model: X \| round r =====` 时间序拼接，`--json`：status（completed/partial/interrupted/failed）/usage 合计/transcript[]（每次发言含 usage/latency/error）；`[PASS]` 提前共识退出、`--blind` 见第 8 节缓办项 |
 
 ## 1. 目标与非目标
 
@@ -129,7 +129,7 @@ aliases:
 - [x] `--show-thinking`：推理模型思维链走 **stderr**（带标头；`--stream` 时同步增量），stdout 仍只有正文；`--json` 中两个字段并存
 - [x] `--stream`：token 增量打印到 stdout，供人类交互使用；**与 `--json` 互斥**；正文一旦开始输出即禁用重试与故障转移（第 0 节铁律，中途断流保留半截正文并按原错误码退出）
 - [x] 换行约定：正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`
-- [x] stdout 单一写点：全程序只允许一处代码写 stdout，配 golden test 逐字节守护
+- [x] stdout 写点收敛：每条命令恰一处 stdout 写点、互斥不混写，配 golden test 逐字节守护（ask 正文/`--json` 两互斥点；compare/council 分隔拼接点）
 - [x] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空，code 与退出码一致），退出码照旧，Agent 可无条件 jq 解析
 - [x] 空正文处理：exit 0 + stderr 警告（finish_reason 与思维链长度提示）
 - [x] `--quiet`：关闭 stderr 心跳/耗时/转移提示（警告与错误保留；供宿主把 stdout/stderr 合并进同一输出的场景）
@@ -148,7 +148,7 @@ aliases:
 | 130 | 被中断（SIGINT），区别于超时 |
 
 ### 3.4 超时与重试
-- [x] 默认 `timeout_seconds: 300`（长推理模型 3-5 分钟属正常），`--timeout` 可调
+- [x] 默认 `timeout_seconds: 300`（长推理模型 3-5 分钟属正常），`--timeout` 可调（council 例外：`--timeout` 是单次发言预算，墙钟 ≈ 轮次×timeout）
 - [x] 重试条件：连接失败 / 429 / 5xx；指数退避（1s/2s/4s 封顶 8s）+ 遵循 `Retry-After`；上限 `retry_max`（默认 2），且受总 deadline 约束（404/model_not_found/超时直接换模型不重试同模型）
 - [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
@@ -165,21 +165,22 @@ aliases:
 - [x] `brain council`（M9）：拓扑/透镜/失败语义见第 0 节「串行辩论（council）」行；stdout 为成功发言的 `===== model: X | round r =====` 时间序拼接（缺席不出现在 stdout，发言记录内留缺席标记供后续席位可见、stderr 与 `--json` 明示）；`--stream`/`--show-thinking`/`--blind` 不提供（v1，见第 8 节）
 
 ## 5. 分发与工程化
-- [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（配置已过 `goreleaser check`，待首个 tag 全链路验证）
-- [x] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 6 目标交叉构建冒烟（真实网关 e2e 待配 repo secret 后补）
+- [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（全链路自 v0.1.0 起多版验证通过）
+- [x] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 6 目标交叉构建冒烟（真实网关 e2e 曾配 secret 落地，后因网关 IP 风控降级 continue-on-error，本地 `.env` 联调替代）
 - [x] `--version`：ldflags 注入 git tag / commit
 - [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）
 - [ ] 可选：Homebrew tap（需先建 `icheer/homebrew-tap` 仓库，goreleaser 加 brew 配置即可）；`go install` 作为开发者备选
 - [x] SKILL.md 随仓库分发（`skills/brain/SKILL.md`），README 说明如何链接/复制进 `.claude/skills/` 或 `.agents/skills/`
 
 ## 6. 配套 Agent Skill（SKILL.md）设计
-- [x] **触发时机**：复杂推理交叉验证、第二意见代码审查、视觉/图表解析、死循环时的破局咨询
+- [x] **触发时机**：复杂推理交叉验证、第二意见代码审查、视觉/图表解析、死循环时的破局咨询、多模型交锋辩论（compare 各说各话不够时用 council）
 - [x] **不触发时机**（防滥用与费用控制）：Agent 自己能完成的事、简单事实查询、连续高频调用（写明节流预期）
 - [x] 命令模板：管道日志分析、多文件审查（`-f` 多次）、多图比对（`-i` 多次）、`-s` 角色约束
 - [x] 工程注意事项：宿主超时设置、按退出码决定重试还是换模型、用 `--json` 核对 usage
 - [x] 验证指引：外脑输出后的自检与落地流程
 - [x] 推理深度暗示：常见 5 档 low/medium/high/xhigh/max、智谱 GLM-5.3 仅 low/high/max 3 档；深度推演 `-e high`（更深可用 xhigh）、快问快答 `-e low`、不确定时先不设（各模型用自身默认）；`finish_reason=length` 空正文时 `-e low` 降档重试
 - [x] 别名冷启动指引：别名来自本机 config.yaml 的 aliases 段（`brain init` 可生成）；未配置时 `-m fast` 会按字面模型 ID 发出而 404，用 `brain models` 查 ID 直调
+- [x] council 教学点（M9）：串行原语的耗时/费用量级（一次任务 ≤1 次）、透镜表模板（`-s` 写席位-透镜表即协议）、「共鸣点/断层线」裁决框架、模板语言跟随材料
 - [ ] frontmatter description 的**触发命中率**在真实宿主（Claude Code + 至少一个其他宿主）实测：该触发时触发、不该触发时克制，并据此精简 description（2026-10-24 外脑评审新增：不同宿主消费 skill 的方式不同，密集描述的效果未知，这是产品成立的前提）
 
 ## 7. 里程碑
@@ -215,12 +216,12 @@ aliases:
   - 设计取舍：用户独立提出与 OpenAI SDK extra_body/extra_headers 同构的方案——一次性终结参数枚举军备竞赛，网关侧新参数/厂商私有字段永远无需跟版；`--output-schema` 专项 flag 取消（`--extra-body '{"response_format":…}'` 覆盖该场景）；此前讨论过的 `--json-object` 也无需独立 flag
   - v0.8.1 修订：`reasoning_effort`/`max_tokens` 从硬保留字改为**快车道优先**（用户决策：`-参数` 只做高频快车道，与 extras 同名时以 flag 为准 + stderr 提示）——拒绝清单只留生命线字段，逃生口不再拒绝合法参数
 - **M9**：`brain council` 串行辩论（混合拓扑：首轮并行盲评 + 蛇形串行交锋）
-  - 状态（2026-10-26）：**功能完成**，单测全绿（含 -race）——stdout 逐字节时间序拼接、首轮盲评互不可见、蛇形与 C=3 指令分层（增量轮/收尾轮）、缺席早期终止（status=partial）与中途缺席标记进入后续发言、全失败 401→exit 2、usage 合计、dry-run 蛇形调度表、互斥与轮次校验；决策见第 0 节「串行辩论（council）」行
+  - 状态（2026-10-26）：**功能完成**，单测全绿（含 -race）——stdout 逐字节时间序拼接、首轮盲评互不可见、蛇形与 C=3 指令分层（增量轮/收尾轮）、缺席早期终止（status=partial）与中途缺席标记进入后续发言、全失败 401→exit 2、usage 合计、dry-run 蛇形调度表、互斥与轮次校验、模板语言跟随内容（英文材料→英文模板、英文正文+中文透镜表→中文模板）；决策见第 0 节「串行辩论（council）」行
   - e2e（真实网关，2026-10-26）：2 席位×2 轮实弹（deepseek 挂安全透镜 vs gemini 挂性能透镜，透镜经 `-s` 席位-透镜表注入）——首轮两席位确实各按透镜独立立论；次轮逐点交锋且各有真实自我修正（gemini 收回「网盘直同步」、deepseek 收回「进程边界即信任边界」等三处），末轮产出最终立场与未解分歧清单；194.9s、4/4 发言、exit 0、逐发言 usage 可见
   - 来源：用户设计（固定上下文+递增发言+轮次预算告知+原文交宿主裁决）× 双通道评审（本地 + `cpa/gemini-4-argon-high` 两轮独立）交叉收敛；混合拓扑/前缀缓存布局/强制交锋指令为 Argon 增量，透镜=上下文为三方收敛（Argon 自我推翻其 `-m "model#lens"` 提案）
-  - 设计取舍：拒绝 per-seat fallback（席位换人=跨轮身份造假，compare 无转移先例延伸）；拒绝 `--max-tokens-per-turn` 默认值（违背纯透传，`--max-output-tokens` 现成）；拒绝 XML 输出标签（沿用 `=====` 家族契约）；拒绝 partial → exit 2（破坏 3.3 退出码表）；fyi.md「虚拟伟人智囊团」persona 评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识→收尾指令），不搬伟人池/协调员/整合者（内建裁判）与状态机交互（flag 即交互协议）
+  - 设计取舍：拒绝 per-seat fallback（席位换人=跨轮身份造假，compare 无转移先例延伸）；拒绝 `--max-tokens-per-turn` 默认值（违背纯透传，`--max-output-tokens` 现成）；拒绝 XML 输出标签（沿用 `=====` 家族契约）；拒绝 partial → exit 2（破坏 3.3 退出码表）；议事/指令模板语言定为**跟随内容**而非 locale（用户决策，发版前修订）：模板是入上下文的材料，语域应与讨论材料一致，locale 只该管本地 UI——上下文 + `-s` 汉字占比 >2% 即中文模板；fyi.md「虚拟伟人智囊团」persona 评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识→收尾指令），不搬伟人池/协调员/整合者（内建裁判）与状态机交互（flag 即交互协议）
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
-  - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
+  - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 因网关 IP 风控降级 continue-on-error（本地 `.env` 联调替代）
 
 ## 8. 开放问题
 1. **网关密钥发放**：若网关目前只有一把共享 key，公开分发前需先支持按用户发 key（网关侧配套工作，需确认可行性与时间点）

@@ -95,6 +95,7 @@ brain ask -m fast --extra-headers '{"X-Tenant":"a"}' "..."    # 附加 HTTP 头�
 - `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
 - **compare 是并发原语**：同题并行发给 N 个模型，费用与输入×腿数；≥1 腿成功即 exit 0，失败腿在 stderr 与 `responses[]` 中明示；compare 语境下别名展开为整组且**无故障转移**（静默转移会摧毁「谁回答了什么」）；裁决由你做，brain 不内建裁判——对比原文后自己下结论，节流比 ask 更严（一次任务 ≤2 次）
 - **council 是串行原语**：总调用 = 席位×轮次、墙钟 ≈ 轮次×`--timeout`（单次发言预算，宿主 Bash 超时按此量级给足）；第 r 轮输入 ≈ 固定上下文 + (r-1)×N 次发言，费用超线性，节流比 compare 更严（一次任务 ≤1 次）；席位只做同模型重试、无跨模型故障转移，缺席在记录/stderr/`--json` 明示且不丢已积累发言（提前终止/中断也照常输出）
+- **council 模板语言跟随材料**：议事/指令模板按你传入的上下文 + `-s` 的汉字占比自动选语言（>2% → 中文，否则英文），与 stderr 的 locale 检测无关
 - **裁决 council 输出**：末轮发言自带各方最终立场与未解分歧，按「共鸣点（隐性共识）/断层线（根本分歧，常见根源是目标函数不同）」归纳；缺席席位意味着样本不齐，降低对应结论的置信度
 - **--extra-body / --extra-headers 保留字**：body 的 model/messages/stream/stream_options 与 headers 的 Authorization/Content-Type/Accept 会被 exit 1 拒绝（防静默覆盖生命线字段）；reasoning_effort/max_tokens 可经 extra 传，但与 `-e`/`--max-output-tokens` 同名时**以 flag 为准**（stderr 有提示）；效果取决于上游模型支持，网关 400 即报；发前 `--dry-run` 核对合并结果；compare 里全腿共用同一份 extras（跨厂商腿可能各自 400，权衡在调用方）
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
