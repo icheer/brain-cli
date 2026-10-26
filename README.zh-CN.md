@@ -61,7 +61,9 @@ brain compare -m reason --json "对这个结论做压力测试" | jq -r '.respon
 # 先发言者，末轮给出各方最终立场/观点变化/未解分歧。总调用 = 模型数 × 轮次。
 brain council -m reason -m coding -f design.md "这个设计该用 SQLite 做存储吗"
 # 立场/透镜就是上下文：用 -s 写席位-透镜表。每个模型发言时都会被告知自己的席位名
-# （即模型 ID），它在表里认领写着自己名字的那一行——这就是全部的映射机制，没有语法。
+# （即 -m 展开后的完整模型 ID），它在表里认领写着自己名字的那一行——这就是全部映射。
+# 唯一硬要求：表里要写展开后的模型 ID（-m panel 展开为链上 ID——席位从不知道别名，
+# 写 panel=xxx 会全部认领失败且无报错）；ID 之外的写法（=、：、「从…视角」、列表）随意。
 brain council -m panel -f design.md \
   -s "席位透镜：aihub/gpt-6-astra=安全与故障隔离；anti/gemini-3.8-flash=性能与交付速度" \
   "这个设计可以直接落地吗"

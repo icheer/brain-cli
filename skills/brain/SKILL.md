@@ -74,8 +74,9 @@ brain council -m reason -m coding -f design.md "评审这份设计的并发与�
 brain council -m reason -C 3 -f design.md "深挖这份架构决策的分歧"              # -C 3 在盲评与收尾之间加一轮增量交锋
 brain council -m reason --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'
 
-# 立场/视角（透镜）无专用语法：席位-透镜表写进 -s；每次发言会告知模型自己的席位名（模型 ID），
-# 模型按名字认领表中对应行——即全部映射机制
+# 立场/视角（透镜）：席位-透镜表写进 -s；每次发言会告知模型自己的席位名（-m 展开后的
+# 完整模型 ID），模型按名字认领表中对应行。硬要求只有一条：表里必须用展开后的模型 ID
+# （写别名则席位认领不到，静默退化为裸模型辩论）；其余格式自由
 brain council -m m-a -m m-b -f design.md -s "席位-透镜表：m-a 从安全与边界防御视角；m-b 从性能与快速交付视角" "评审这份设计"
 
 # 任意请求参数透传（temperature/top_k/response_format/厂商私有字段…）

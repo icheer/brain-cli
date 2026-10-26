@@ -63,8 +63,10 @@ brain compare -m reason --json "stress-test this conclusion" | jq -r '.responses
 brain council -m reason -m coding -f design.md "should this design adopt SQLite for storage"
 
 # Lenses/stances are just context: write a seat-to-lens table via -s. Each seat is told its
-# own model name when it speaks, so it claims the table line that names it — that is the
-# whole mapping mechanism; there is no syntax.
+# own model ID when it speaks, so it claims the table line that names it — that is the
+# whole mapping. One hard rule: the table must spell the RESOLVED model IDs (-m panel
+# expands to the chain's IDs — the alias never reaches the seats); everything else
+# (separator, wording, layout) is free-form.
 brain council -m panel -f design.md \
   -s "seat lenses: aihub/gpt-6-astra = security & failure isolation; anti/gemini-3.8-flash = performance & delivery speed" \
   "should this design ship as is"
