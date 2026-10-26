@@ -184,6 +184,8 @@ func runCompare(cmd *cobra.Command, args []string) (retErr error) {
 		if exErr != nil {
 			return exitcode.Fail(stderr, exitcode.Usage, "%v", exErr)
 		}
+		// 快车道优先：-e / --max-output-tokens 与 extras 同名冲突时以 flag 为准
+		applyFastLanePrecedence(extraBody, compareOpts.reasoningEffort, compareOpts.maxOutputTokens, stderr)
 	}
 
 	// --json：无论成败 stdout 恒定输出一个 JSON 对象；rawRep 为全失败时的代表错误。

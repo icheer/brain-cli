@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -86,14 +87,14 @@ func TestExtraBodyFileAndMerge(t *testing.T) {
 	}
 }
 
-// 保留字拒绝：body 生命线字段与专属 flag 字段；headers 鉴权字段。
+// 硬保留字拒绝：body 生命线字段；headers 鉴权字段。
+// （reasoning_effort/max_tokens 已改为快车道优先，见 TestFastLanePrecedence）
 func TestExtraReservedRejected(t *testing.T) {
 	srv, bodies, _ := captureGateway(t)
 	setupConfig(t, srv.URL+"/v1")
 
 	for _, arg := range []string{
 		`{"stream":false}`, `{"messages":[]}`, `{"model":"evil"}`,
-		`{"reasoning_effort":"high"}`, `{"max_tokens":100}`,
 	} {
 		code, _, errStr := runBrain("ask", "-m", "fast", "--extra-body", arg, "问")
 		if code != 1 {
@@ -109,6 +110,54 @@ func TestExtraReservedRejected(t *testing.T) {
 	}
 	if len(*bodies) != 0 {
 		t.Fatalf("全部保留字请求都不应发出: %d", len(*bodies))
+	}
+}
+
+// 快车道优先（v0.8.1）：-e / --max-output-tokens 与 extras 同名冲突时以 flag 为准，
+// stderr 一行提示；flag 未设时 extras 的值正常透传。
+func TestFastLanePrecedence(t *testing.T) {
+	srv, bodies, _ := captureGateway(t)
+	setupConfig(t, srv.URL+"/v1")
+
+	// 冲突：-e high 赢过 extra 的 low
+	code, _, errStr := runBrain("ask", "-m", "fast",
+		"-e", "high", "--extra-body", `{"reasoning_effort":"low"}`, "问")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	b := (*bodies)[0]
+	if b["reasoning_effort"] != "high" {
+		t.Fatalf("冲突时应以 -e 为准: %v", b["reasoning_effort"])
+	}
+	if !strings.Contains(errStr, "-e") || !strings.Contains(errStr, "为准") {
+		t.Fatalf("冲突应 stderr 提示: %q", errStr)
+	}
+
+	// 冲突：--max-output-tokens 50 赢过 extra 的 999
+	askOpts = askOptions{} // cobra flag 状态会跨 runBrain 泄漏，逐子测试重置
+	code, _, errStr = runBrain("ask", "-m", "fast",
+		"--max-output-tokens", "50", "--extra-body", `{"max_tokens":999}`, "问")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	b = (*bodies)[1]
+	if b["max_tokens"] != float64(50) {
+		t.Fatalf("冲突时应以 flag 为准: %v", b["max_tokens"])
+	}
+
+	// flag 未设：extras 的值原样透传
+	askOpts = askOptions{}
+	code, _, errStr = runBrain("ask", "-m", "fast",
+		"--extra-body", `{"reasoning_effort":"low","max_tokens":100}`, "问")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	b = (*bodies)[2]
+	if b["reasoning_effort"] != "low" || b["max_tokens"] != float64(100) {
+		t.Fatalf("flag 未设时 extras 应透传: %v", b)
+	}
+	if strings.Contains(errStr, "为准") {
+		t.Fatalf("无冲突不应提示: %q", errStr)
 	}
 }
 

@@ -162,6 +162,8 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		if exErr != nil {
 			return exitcode.Fail(stderr, exitcode.Usage, "%v", exErr)
 		}
+		// 快车道优先：-e / --max-output-tokens 与 extras 同名冲突时以 flag 为准
+		applyFastLanePrecedence(extraBody, askOpts.reasoningEffort, askOpts.maxOutputTokens, stderr)
 	}
 
 	// --json：无论成败（含配置/输入错误），stdout 恒定输出一个 JSON 对象。

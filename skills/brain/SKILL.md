@@ -85,7 +85,7 @@ brain ask -m fast --extra-headers '{"X-Tenant":"a"}' "..."    # 附加 HTTP 头�
 - stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
 - `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
 - **compare 是并发原语**：同题并行发给 N 个模型，费用与输入×腿数；≥1 腿成功即 exit 0，失败腿在 stderr 与 `responses[]` 中明示；compare 语境下别名展开为整组且**无故障转移**（静默转移会摧毁「谁回答了什么」）；裁决由你做，brain 不内建裁判——对比原文后自己下结论，节流比 ask 更严（一次任务 ≤2 次）
-- **--extra-body / --extra-headers 保留字**：body 的 model/messages/stream/stream_options/reasoning_effort/max_tokens 与 headers 的 Authorization/Content-Type/Accept 会被 exit 1 拒绝（防静默覆盖生命线字段；reasoning_effort 用 `-e`，Authorization 用 api_key 配置）；效果取决于上游模型支持，网关 400 即报；发前 `--dry-run` 核对合并结果；compare 里全腿共用同一份 extras（跨厂商腿可能各自 400，权衡在调用方）
+- **--extra-body / --extra-headers 保留字**：body 的 model/messages/stream/stream_options 与 headers 的 Authorization/Content-Type/Accept 会被 exit 1 拒绝（防静默覆盖生命线字段）；reasoning_effort/max_tokens 可经 extra 传，但与 `-e`/`--max-output-tokens` 同名时**以 flag 为准**（stderr 有提示）；效果取决于上游模型支持，网关 400 即报；发前 `--dry-run` 核对合并结果；compare 里全腿共用同一份 extras（跨厂商腿可能各自 400，权衡在调用方）
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
 - **stderr 文案语言随环境自动中英切换**（`BRAIN_LANG` / locale / UTC+8 时区）；你的判断一律以退出码与 `--json` 字段为准，不要匹配 stderr 文案
 

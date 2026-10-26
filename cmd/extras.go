@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -10,12 +12,11 @@ import (
 	"github.com/icheer/brain-cli/internal/i18n"
 )
 
-// reservedBodyKeys --extra-body 的保留字：brain 生命线字段（覆盖会破坏传输/输入）
-// 与专属 flag 管辖字段（-e/--max-output-tokens，与 extra 并存会构成优先级二义性）。
-// 出现即拒绝（exit 1），不存在「谁覆盖谁」的问题。
+// reservedBodyKeys --extra-body 的硬保留字：brain 生命线字段（覆盖会破坏传输/输入），
+// 出现即拒绝（exit 1）。reasoning_effort / max_tokens 不在此列——它们允许经 extra 传入，
+// 但与 -e / --max-output-tokens 冲突时以快车道 flag 为准（applyFastLanePrecedence）。
 var reservedBodyKeys = map[string]bool{
 	"model": true, "messages": true, "stream": true, "stream_options": true,
-	"reasoning_effort": true, "max_tokens": true,
 }
 
 // reservedHeaderKeys --extra-headers 的保留字：鉴权只走 config/环境变量一条正道
@@ -64,6 +65,25 @@ func parseExtraHeaders(values []string) (map[string]string, error) {
 		out[k] = s
 	}
 	return out, nil
+}
+
+// applyFastLanePrecedence 快车道优先（v0.8.1 决策）：-e / --max-output-tokens 是高频
+// 快车道，与 --extra-body 同名键冲突时以 flag 为准——从 extras 删除该键（flag 值已在
+// ChatRequest 字段里自然生效），stderr 一行提示让覆盖可见可查。
+func applyFastLanePrecedence(extraBody map[string]any, effort string, maxTokens int, stderr io.Writer) {
+	if extraBody == nil {
+		return
+	}
+	if _, ok := extraBody["reasoning_effort"]; ok && effort != "" {
+		delete(extraBody, "reasoning_effort")
+		fmt.Fprintf(stderr, "brain: %s\n",
+			i18n.T("--extra-body 的 reasoning_effort 与 -e 冲突，以 -e 为准", "reasoning_effort in --extra-body conflicts with -e; -e wins"))
+	}
+	if _, ok := extraBody["max_tokens"]; ok && maxTokens > 0 {
+		delete(extraBody, "max_tokens")
+		fmt.Fprintf(stderr, "brain: %s\n",
+			i18n.T("--extra-body 的 max_tokens 与 --max-output-tokens 冲突，以 flag 为准", "max_tokens in --extra-body conflicts with --max-output-tokens; the flag wins"))
+	}
 }
 
 // rejectReserved 保留字拒绝（键匹配大小写不敏感；HTTP 头名本就如此）。
@@ -120,8 +140,8 @@ func parseExtraFlags(bodyVals, headerVals []string) (map[string]any, map[string]
 
 // extraBodyFlagsHelp / extraHeadersFlagsHelp 双语帮助文案（ask 与 compare 复用）。
 func extraBodyFlagsHelp() string {
-	return i18n.T("附加请求体参数：JSON 对象（内联或 @file），可重复有序合并，顶层覆盖式透传给网关（如 {\"temperature\":0.3,\"response_format\":{...}}）；保留字 model/messages/stream/stream_options/reasoning_effort/max_tokens 会被拒绝",
-		"extra request-body fields: a JSON object (inline or @file), repeatable and merged in order; top-level keys pass through to the gateway (e.g. {\"temperature\":0.3,\"response_format\":{...}}); reserved keys model/messages/stream/stream_options/reasoning_effort/max_tokens are rejected")
+	return i18n.T("附加请求体参数：JSON 对象（内联或 @file），可重复有序合并，顶层覆盖式透传给网关（如 {\"temperature\":0.3,\"response_format\":{...}}）；保留字 model/messages/stream/stream_options 被拒绝；reasoning_effort/max_tokens 可传，但与 -e/--max-output-tokens 冲突时以 flag 为准",
+		"extra request-body fields: a JSON object (inline or @file), repeatable and merged in order; top-level keys pass through to the gateway (e.g. {\"temperature\":0.3,\"response_format\":{...}}); reserved keys model/messages/stream/stream_options are rejected; reasoning_effort/max_tokens are allowed but -e/--max-output-tokens win on conflict")
 }
 
 func extraHeadersFlagsHelp() string {
