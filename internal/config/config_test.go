@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -67,6 +68,7 @@ func TestSavePerm0600AndRoundTrip(t *testing.T) {
 	in := Config{
 		BaseURL: "https://x.example/v1", APIKey: "sk-1", DefaultModel: "fast",
 		TimeoutSeconds: 10, MaxInputBytes: 100, RetryMax: 1, ModelsCacheTTLSeconds: 60,
+		Aliases: map[string]Alias{"fast": {Models: []string{"m-a", "m-b"}, Use: "快"}},
 	}
 	if err := Save(in); err != nil {
 		t.Fatal(err)
@@ -87,7 +89,8 @@ func TestSavePerm0600AndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != in {
+	// Config 含 map 字段不可直接比较，用 DeepEqual
+	if !reflect.DeepEqual(got, in) {
 		t.Fatalf("round trip 不一致: %+v", got)
 	}
 }
@@ -118,27 +121,28 @@ func TestLoadCorruptYAML(t *testing.T) {
 	}
 }
 
-func TestLoadModelsAbsent(t *testing.T) {
-	t.Setenv("BRAIN_MODELS", filepath.Join(t.TempDir(), "models.yaml"))
-	mf, err := LoadModels()
-	if err != nil {
-		t.Fatalf("models.yaml 缺失不应报错: %v", err)
-	}
-	if len(mf.Aliases) != 0 {
-		t.Fatalf("应为空清单: %+v", mf.Aliases)
-	}
-}
+// aliases 段随 config.yaml 一并解析（2026-10-26 单文件化）；无该段时为空且不报错。
+func TestLoadAliasesSection(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, p, "base_url: https://x/v1\napi_key: k\naliases:\n  fast:\n    models: [a, b]\n    use: 快\n", 0o600)
+	t.Setenv("BRAIN_CONFIG", p)
+	isolateEnv(t)
 
-func TestLoadModelsParse(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "models.yaml")
-	writeFile(t, p, "aliases:\n  fast:\n    models: [a, b]\n    use: 快\n", 0o644)
-	t.Setenv("BRAIN_MODELS", p)
-	mf, err := LoadModels()
+	cfg, _, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := mf.Aliases["fast"]
+	a := cfg.Aliases["fast"]
 	if len(a.Models) != 2 || a.Models[0] != "a" || a.Use != "快" {
 		t.Fatalf("解析不符: %+v", a)
+	}
+
+	// 无 aliases 段：空 map，不报错
+	p2 := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, p2, "base_url: https://x/v1\napi_key: k\n", 0o600)
+	t.Setenv("BRAIN_CONFIG", p2)
+	cfg2, _, err := Load()
+	if err != nil || len(cfg2.Aliases) != 0 {
+		t.Fatalf("无 aliases 段应为空: %+v, %v", cfg2.Aliases, err)
 	}
 }

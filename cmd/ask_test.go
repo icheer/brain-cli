@@ -65,24 +65,20 @@ func fakeGateway(t *testing.T, status int, content string) (*httptest.Server, *m
 	return srv, &body
 }
 
-// setupConfig 写入临时 config.yaml / models.yaml 并隔离缓存目录。
+// setupConfig 写入临时 config.yaml（含 aliases 段）并隔离缓存目录。
 func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := "base_url: " + baseURL + "\napi_key: test-key\ndefault_model: fast\ntimeout_seconds: 5\nretry_max: 0\n"
+	cfg := "base_url: " + baseURL + "\napi_key: test-key\ndefault_model: fast\ntimeout_seconds: 5\nretry_max: 0\n" +
+		"aliases:\n  fast:\n    models: [m-a, m-b]\n    use: 快\n"
 	cfg += strings.Join(extra, "\n")
 	cfgPath := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "models.yaml"),
-		[]byte("aliases:\n  fast:\n    models: [m-a, m-b]\n    use: 快\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	t.Setenv("BRAIN_CONFIG", cfgPath)
-	t.Setenv("BRAIN_MODELS", filepath.Join(dir, "models.yaml"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
-	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY", "BRAIN_TIMEOUT"} {
+	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY", "BRAIN_TIMEOUT", "BRAIN_MODELS", "BRAIN_DEFAULT_MODEL"} {
 		t.Setenv(k, "")
 	}
 	// cobra 复用同一命令对象，重置上次测试残留的 flag 值
@@ -283,8 +279,7 @@ func TestAskNoInputExit1(t *testing.T) {
 
 func TestAskMissingConfigExit7(t *testing.T) {
 	t.Setenv("BRAIN_CONFIG", filepath.Join(t.TempDir(), "absent.yaml"))
-	t.Setenv("BRAIN_MODELS", filepath.Join(t.TempDir(), "absent.yaml"))
-	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY", "BRAIN_TIMEOUT"} {
+	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY", "BRAIN_TIMEOUT", "BRAIN_DEFAULT_MODEL"} {
 		t.Setenv(k, "")
 	}
 	code, _, errStr := runBrain("ask", "q")

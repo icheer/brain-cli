@@ -1,5 +1,6 @@
-// Package config 管理个人配置 config.yaml（含密钥，0600）与
-// 可共享模型清单 models.yaml（不含密钥），以及「默认值 < 文件 < 环境变量」的合并。
+// Package config 管理个人配置 config.yaml（含密钥，0600；别名映射在其中的 aliases 段），
+// 以及「默认值 < 文件 < 环境变量」的合并。
+// 2026-10-26 起原 models.yaml 并入本文件（单文件、单环境变量 BRAIN_CONFIG）。
 package config
 
 import (
@@ -14,16 +15,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config 与 DESIGN.md 2.2 的 config.yaml 一一对应。
+// Config 与 DESIGN.md 2.2 的 config.yaml 一一对应；aliases 段可选（缺省 -m 按字面模型 ID 处理）。
 type Config struct {
-	BaseURL               string `yaml:"base_url"`
-	APIKey                string `yaml:"api_key"`
-	DefaultModel          string `yaml:"default_model"`
-	TimeoutSeconds        int    `yaml:"timeout_seconds"`
-	MaxInputBytes         int64  `yaml:"max_input_bytes"`
-	RetryMax              int    `yaml:"retry_max"`
-	ModelsCacheTTLSeconds int    `yaml:"models_cache_ttl_seconds"`
-	UserAgent             string `yaml:"user_agent"` // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
+	BaseURL               string            `yaml:"base_url"`
+	APIKey                string            `yaml:"api_key"`
+	DefaultModel          string            `yaml:"default_model"`
+	TimeoutSeconds        int               `yaml:"timeout_seconds"`
+	MaxInputBytes         int64             `yaml:"max_input_bytes"`
+	RetryMax              int               `yaml:"retry_max"`
+	ModelsCacheTTLSeconds int               `yaml:"models_cache_ttl_seconds"`
+	UserAgent             string            `yaml:"user_agent"` // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
+	Aliases               map[string]Alias  `yaml:"aliases,omitempty"` // 别名 → fallback 链 + 场景标注（DESIGN.md 2.3）
 }
 
 // Default 返回代码内默认值（优先级最低）。
@@ -36,20 +38,18 @@ func Default() Config {
 	}
 }
 
+// Alias 是 config.yaml aliases 段中的一个别名条目：真实模型 fallback 链 + 场景标注（DESIGN.md 2.3）。
+type Alias struct {
+	Models []string `yaml:"models"` // 前者为主，故障自动切换后者
+	Use    string   `yaml:"use"`    // 场景标注，供 brain models 展示
+}
+
 // Path 返回 config.yaml 路径；BRAIN_CONFIG 环境变量可指定完整文件路径覆盖。
 func Path() (string, error) {
 	if p := os.Getenv("BRAIN_CONFIG"); p != "" {
 		return p, nil
 	}
 	return userPath("config.yaml")
-}
-
-// ModelsPath 返回 models.yaml 路径；BRAIN_MODELS 环境变量可覆盖。
-func ModelsPath() (string, error) {
-	if p := os.Getenv("BRAIN_MODELS"); p != "" {
-		return p, nil
-	}
-	return userPath("models.yaml")
 }
 
 func userPath(name string) (string, error) {

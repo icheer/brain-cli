@@ -10,10 +10,10 @@ import (
 
 // ModelChain 把 -m / default_model 展开为尝试链：
 // 别名 → 其 fallback 链（原顺序，M1 起逐个故障转移）；字面 ID → 单元素链。
-func ModelChain(name string, mf config.ModelsFile) ([]string, error) {
-	if a, ok := mf.Aliases[name]; ok {
+func ModelChain(name string, aliases map[string]config.Alias) ([]string, error) {
+	if a, ok := aliases[name]; ok {
 		if len(a.Models) == 0 {
-			return nil, &InputError{Msg: fmt.Sprintf("models.yaml 中别名 %q 的 models 列表为空", name)}
+			return nil, &InputError{Msg: fmt.Sprintf("config.yaml 别名 %q 的 models 列表为空", name)}
 		}
 		return a.Models, nil
 	}
@@ -21,8 +21,8 @@ func ModelChain(name string, mf config.ModelsFile) ([]string, error) {
 }
 
 // ResolveModel 解析链首位（DESIGN.md 第 4 节：别名 → 字面模型 ID，ID 交网关裁决）。
-func ResolveModel(name string, mf config.ModelsFile) (string, error) {
-	chain, err := ModelChain(name, mf)
+func ResolveModel(name string, aliases map[string]config.Alias) (string, error) {
+	chain, err := ModelChain(name, aliases)
 	if err != nil {
 		return "", err
 	}
@@ -32,7 +32,7 @@ func ResolveModel(name string, mf config.ModelsFile) (string, error) {
 // Suggest 从候选（本地别名 + 已缓存模型）中挑选相近项，用于模型不可用时的 stderr 提示。
 // names 为触发来源（别名与其解析出的模型 ID 都可作种子）；
 // 前缀命中优先，其次编辑距离 ≤ 2，最多 5 条。
-func Suggest(names []string, mf config.ModelsFile, cachedModels []string) []string {
+func Suggest(names []string, aliases map[string]config.Alias, cachedModels []string) []string {
 	seen := map[string]bool{}
 	var out []string
 
@@ -57,8 +57,8 @@ func Suggest(names []string, mf config.ModelsFile, cachedModels []string) []stri
 		}
 	}
 
-	aliasNames := make([]string, 0, len(mf.Aliases))
-	for a := range mf.Aliases {
+	aliasNames := make([]string, 0, len(aliases))
+	for a := range aliases {
 		aliasNames = append(aliasNames, a)
 	}
 	sort.Strings(aliasNames)

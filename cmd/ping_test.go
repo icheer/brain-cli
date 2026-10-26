@@ -35,13 +35,13 @@ func TestPingBadKeyExit2(t *testing.T) {
 
 func TestPingBadDefaultModelExit1(t *testing.T) {
 	srv, _ := fakeGateway(t, 200, "")
-	setupConfig(t, srv.URL+"/v1")
-	// 覆盖 models.yaml：fast 链指向网关不存在的模型
-	p := filepath.Join(t.TempDir(), "models.yaml")
-	if err := os.WriteFile(p, []byte("aliases:\n  fast:\n    models: [m-missing]\n"), 0o644); err != nil {
+	dir := setupConfig(t, srv.URL+"/v1")
+	// 改写 config.yaml：fast 链指向网关不存在的模型
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"),
+		[]byte("base_url: "+srv.URL+"/v1\napi_key: test-key\ndefault_model: fast\ntimeout_seconds: 5\nretry_max: 0\n"+
+			"aliases:\n  fast:\n    models: [m-missing]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BRAIN_MODELS", p)
 
 	code, _, errStr := runBrain("ping")
 	if code != 1 || !strings.Contains(errStr, "不在网关可用列表") {
@@ -52,9 +52,10 @@ func TestPingBadDefaultModelExit1(t *testing.T) {
 func TestPingNoDefaultModelStillOK(t *testing.T) {
 	srv, _ := fakeGateway(t, 200, "")
 	dir := setupConfig(t, srv.URL+"/v1")
-	// 抹掉 default_model
+	// 抹掉 default_model（保留 aliases 段，验证互不干扰）
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"),
-		[]byte("base_url: "+srv.URL+"/v1\napi_key: test-key\ntimeout_seconds: 5\nretry_max: 0\n"), 0o600); err != nil {
+		[]byte("base_url: "+srv.URL+"/v1\napi_key: test-key\ntimeout_seconds: 5\nretry_max: 0\n"+
+			"aliases:\n  fast:\n    models: [m-a, m-b]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

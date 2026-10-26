@@ -240,31 +240,35 @@ func TestPingJSON(t *testing.T) {
 	}
 }
 
-// brain models：未配置 models.yaml 时给冷启动提示。
+// brain models：未配置 aliases 段时给冷启动提示。
 func TestModelsNoAliasNote(t *testing.T) {
 	srv, _ := fakeGateway(t, 200, "x")
 	dir := setupConfig(t, srv.URL+"/v1")
-	t.Setenv("BRAIN_MODELS", filepath.Join(dir, "absent-models.yaml"))
+	// 抹掉 aliases 段（保留凭据）
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"),
+		[]byte("base_url: "+srv.URL+"/v1\napi_key: test-key\ntimeout_seconds: 5\nretry_max: 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	code, out, _ := runBrain("models")
 	if code != 0 {
 		t.Fatalf("code=%d", code)
 	}
-	if !strings.Contains(out, "未配置 models.yaml") || !strings.Contains(out, "brain init") {
+	if !strings.Contains(out, "别名：未配置") || !strings.Contains(out, "brain init") {
 		t.Fatalf("应提示别名冷启动: %q", out)
 	}
 }
 
-// init 别名向导：序号/逗号链/跳过/default_model 闭环。
+// init 别名向导：序号/逗号链/跳过/default_model 闭环；别名写进 config.yaml（单文件）。
 func TestInitAliasWizard(t *testing.T) {
 	srv, _ := fakeGateway(t, 200, "x") // /models → m-a, m-b
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("BRAIN_CONFIG", cfgPath)
-	t.Setenv("BRAIN_MODELS", filepath.Join(dir, "models.yaml"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
-	t.Setenv("BRAIN_API_KEY", "")
-	t.Setenv("BRAIN_BASE_URL", "")
+	for _, k := range []string{"BRAIN_API_KEY", "BRAIN_BASE_URL", "BRAIN_TIMEOUT", "BRAIN_DEFAULT_MODEL"} {
+		t.Setenv(k, "")
+	}
 
 	// api_key / default_model(空) / 生成别名(空=Y) / fast=1 / reason=2,1 / coding=空 / vision=空 / 设 fast 为默认=y
 	stdin = strings.NewReader("test-key\n\n\n1\n2,1\n\n\ny\n")
@@ -274,25 +278,28 @@ func TestInitAliasWizard(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, out, errStr)
 	}
-	mf, err := os.ReadFile(filepath.Join(dir, "models.yaml"))
+	cfgData, err := os.ReadFile(cfgPath)
 	if err != nil {
-		t.Fatalf("models.yaml 应已生成: %v", err)
+		t.Fatalf("config.yaml 应已写入: %v", err)
 	}
-	s := string(mf)
-	if !strings.Contains(s, "fast:") || !strings.Contains(s, "m-a") {
-		t.Fatalf("fast 别名不符:\n%s", s)
-	}
-	if !strings.Contains(s, "reason:") || !strings.Contains(s, "- m-b") {
-		t.Fatalf("reason 链不符:\n%s", s)
+	s := string(cfgData)
+	for _, want := range []string{
+		"base_url: " + srv.URL + "/v1",
+		"default_model: fast",
+		"aliases:",
+		"fast:",
+		"- m-a",
+		"reason:",
+		"- m-b",
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("config 缺 %q:\n%s", want, s)
+		}
 	}
 	if strings.Contains(s, "coding") {
 		t.Fatalf("跳过的别名不应写入:\n%s", s)
 	}
-	cfg, _ := os.ReadFile(cfgPath)
-	if !strings.Contains(string(cfg), "default_model: fast") {
-		t.Fatalf("default_model 应闭环设为 fast:\n%s", cfg)
-	}
-	if info, _ := os.Stat(filepath.Join(dir, "models.yaml")); info.Mode().Perm() != 0o644 {
-		t.Fatalf("models.yaml 权限应为 0644: %04o", info.Mode().Perm())
+	if info, _ := os.Stat(cfgPath); info.Mode().Perm() != 0o600 {
+		t.Fatalf("config.yaml 权限应为 0600: %04o", info.Mode().Perm())
 	}
 }

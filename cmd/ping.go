@@ -122,13 +122,9 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 	if cfg.DefaultModel == "" {
 		fmt.Fprintln(stderr, "brain: 提示: 未设置 default_model，不影响 -m 显式指定（brain config set default_model <别名>）")
 	}
-	mf, err := config.LoadModels()
-	if err != nil {
-		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-	}
 
 	if cfg.DefaultModel != "" {
-		chain, err := app.ModelChain(cfg.DefaultModel, mf)
+		chain, err := app.ModelChain(cfg.DefaultModel, cfg.Aliases)
 		if err != nil {
 			return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 		}
@@ -143,7 +139,7 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 		payload.DefaultModel = &pingDefaultJSON{Requested: cfg.DefaultModel, Resolved: primary, OK: ok}
 		if !ok {
 			return exitcode.Fail(stderr, exitcode.Usage,
-				"默认模型 %s → %s 不在网关可用列表（可能无权限或已下线）：brain models --refresh 核对并更新 models.yaml",
+				"默认模型 %s → %s 不在网关可用列表（可能无权限或已下线）：brain models --refresh 核对并更新 config.yaml 的 aliases 段",
 				cfg.DefaultModel, primary)
 		}
 		if !pingOpts.jsonOut {
@@ -154,16 +150,16 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 	if pingOpts.model == "" {
 		return nil
 	}
-	return probeChain(cmd.Context(), stdout, stderr, g, mf, &payload)
+	return probeChain(cmd.Context(), stdout, stderr, g, cfg.Aliases, &payload)
 }
 
 // probeChain 逐模型探测别名链（各发一次极小补全请求），结果写回 payload.Probes。
 // 判定：链上至少一个 OK 即成功；全部失败 exit 5；主模型不可用时 stderr 明示（静默
 // fallback 到次优模型的隐性损失，Agent 应能看见）。
 func probeChain(ctx context.Context, stdout, stderr io.Writer, g *gateway.Client,
-	mf config.ModelsFile, payload *pingJSON,
+	aliases map[string]config.Alias, payload *pingJSON,
 ) error {
-	chain, err := app.ModelChain(pingOpts.model, mf)
+	chain, err := app.ModelChain(pingOpts.model, aliases)
 	if err != nil {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
@@ -207,7 +203,7 @@ func probeChain(ctx context.Context, stdout, stderr io.Writer, g *gateway.Client
 		return exitcode.Fail(stderr, exitcode.Upstream, "别名链 %d 个模型全部探测失败", len(chain))
 	}
 	if !payload.Probes[0].OK {
-		fmt.Fprintln(stderr, "brain: 提示: 主模型探测失败，实际调用将由链上后备承接（建议更新 models.yaml）")
+		fmt.Fprintln(stderr, "brain: 提示: 主模型探测失败，实际调用将由链上后备承接（建议更新 config.yaml 的 aliases 段）")
 	}
 	return nil
 }

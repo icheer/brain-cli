@@ -41,12 +41,11 @@ var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "打印配置文件路径",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cp, err1 := config.Path()
-		mp, err2 := config.ModelsPath()
-		if err1 != nil || err2 != nil {
-			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "定位配置路径失败: %v / %v", err1, err2)
+		cp, err := config.Path()
+		if err != nil {
+			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "定位配置路径失败: %v", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "config: %s\nmodels:  %s\n", cp, mp)
+		fmt.Fprintln(cmd.OutOrStdout(), cp)
 		return nil
 	},
 }

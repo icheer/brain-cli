@@ -98,7 +98,7 @@ func TestInitWritesConfig(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.Remove(cfgPath) // init 需要「不存在」起点
 
-	stdin = strings.NewReader("https://gw.example.com/v1\nsk-abc123\nfast\n")
+	stdin = strings.NewReader("https://gw.example.com/v1\nsk-abc123\nfast\nn\n") // 末行 n 跳过别名向导
 	t.Cleanup(func() { stdin = os.Stdin })
 
 	code, out, errStr := runBrain("init")
@@ -115,6 +115,9 @@ func TestInitWritesConfig(t *testing.T) {
 			t.Fatalf("config 缺 %q:\n%s", want, s)
 		}
 	}
+	if strings.Contains(s, "aliases") {
+		t.Fatalf("跳过向导不应有 aliases 段:\n%s", s)
+	}
 	if info, _ := os.Stat(cfgPath); info.Mode().Perm() != 0o600 {
 		t.Fatalf("权限应为 0600: %04o", info.Mode().Perm())
 	}
@@ -125,7 +128,6 @@ func TestInitEnvKeyFallback(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("BRAIN_CONFIG", cfgPath)
 	t.Setenv("BRAIN_API_KEY", "sk-from-env")
-	t.Setenv("BRAIN_MODELS", filepath.Join(dir, "models.yaml"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
 
 	stdin = strings.NewReader("https://gw.example.com/v1\n\nfast\nn\n") // api_key 留空 → 用环境变量；末行 n 跳过别名向导
@@ -145,7 +147,6 @@ func TestInitCancelOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("BRAIN_CONFIG", cfgPath)
-	t.Setenv("BRAIN_MODELS", filepath.Join(dir, "models.yaml"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
 	os.WriteFile(cfgPath, []byte("base_url: https://keep/v1\n"), 0o600)
 
@@ -159,6 +160,34 @@ func TestInitCancelOverwrite(t *testing.T) {
 	data, _ := os.ReadFile(cfgPath)
 	if !strings.Contains(string(data), "keep") {
 		t.Fatalf("取消覆盖后原配置应保留:\n%s", data)
+	}
+}
+
+// init 覆盖重建：原有 aliases 段默认保留（单文件化后别名随 config.yaml 一起，不能丢）。
+func TestInitOverwriteKeepsAliases(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	t.Setenv("BRAIN_CONFIG", cfgPath)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("BRAIN_API_KEY", "sk-env")
+	os.WriteFile(cfgPath, []byte("base_url: https://old/v1\napi_key: k\n"+
+		"aliases:\n  reason:\n    models: [r-1, r-2]\n"), 0o600)
+
+	// 覆盖确认 y；default_model 空；重新生成别名？默认 N（直接回车）
+	stdin = strings.NewReader("y\nhttps://new.example/v1\n\n\n\n")
+	t.Cleanup(func() { stdin = os.Stdin })
+
+	code, out, _ := runBrain("init")
+	if code != 0 {
+		t.Fatalf("code=%d out=%s", code, out)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	s := string(data)
+	if !strings.Contains(s, "base_url: https://new.example/v1") {
+		t.Fatalf("应写入新 base_url:\n%s", s)
+	}
+	if !strings.Contains(s, "r-1") || !strings.Contains(s, "reason") {
+		t.Fatalf("覆盖重建应保留原有别名:\n%s", s)
 	}
 }
 

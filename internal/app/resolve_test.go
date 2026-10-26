@@ -7,49 +7,49 @@ import (
 )
 
 func TestResolveAlias(t *testing.T) {
-	mf := config.ModelsFile{Aliases: map[string]config.Alias{
+	aliases := map[string]config.Alias{
 		"fast": {Models: []string{"m-primary", "m-backup"}},
-	}}
-	got, err := ResolveModel("fast", mf)
+	}
+	got, err := ResolveModel("fast", aliases)
 	if err != nil || got != "m-primary" {
 		t.Fatalf("别名应取链首位: %q, %v", got, err)
 	}
 }
 
 func TestResolveLiteral(t *testing.T) {
-	got, err := ResolveModel("some/vendor-model", config.ModelsFile{})
+	got, err := ResolveModel("some/vendor-model", map[string]config.Alias{})
 	if err != nil || got != "some/vendor-model" {
 		t.Fatalf("未知名按字面模型 ID 透传: %q, %v", got, err)
 	}
 }
 
 func TestResolveEmptyAlias(t *testing.T) {
-	mf := config.ModelsFile{Aliases: map[string]config.Alias{"bad": {}}}
-	if _, err := ResolveModel("bad", mf); err == nil {
+	aliases := map[string]config.Alias{"bad": {}}
+	if _, err := ResolveModel("bad", aliases); err == nil {
 		t.Fatal("空 models 列表应报错")
 	}
 }
 
 func TestModelChain(t *testing.T) {
-	mf := config.ModelsFile{Aliases: map[string]config.Alias{
+	aliases := map[string]config.Alias{
 		"fast": {Models: []string{"m-primary", "m-backup"}},
-	}}
-	chain, err := ModelChain("fast", mf)
+	}
+	chain, err := ModelChain("fast", aliases)
 	if err != nil || len(chain) != 2 || chain[0] != "m-primary" || chain[1] != "m-backup" {
 		t.Fatalf("别名应展开为完整链: %v, %v", chain, err)
 	}
-	chain, err = ModelChain("literal/model-id", mf)
+	chain, err = ModelChain("literal/model-id", aliases)
 	if err != nil || len(chain) != 1 || chain[0] != "literal/model-id" {
 		t.Fatalf("字面 ID 应为单元素链: %v, %v", chain, err)
 	}
 }
 
 func TestSuggest(t *testing.T) {
-	mf := config.ModelsFile{Aliases: map[string]config.Alias{
+	aliases := map[string]config.Alias{
 		"fast":   {Models: []string{"m1"}},
 		"reason": {Models: []string{"m2"}},
-	}}
-	got := Suggest([]string{"fas"}, mf, []string{"fast-pro", "unrelated-long-name"})
+	}
+	got := Suggest([]string{"fas"}, aliases, []string{"fast-pro", "unrelated-long-name"})
 	if len(got) == 0 || got[0] != "fast" {
 		t.Fatalf("前缀命中优先: %v", got)
 	}
@@ -66,11 +66,11 @@ func TestSuggest(t *testing.T) {
 }
 
 func TestSuggestMultipleSeeds(t *testing.T) {
-	mf := config.ModelsFile{Aliases: map[string]config.Alias{
+	aliases := map[string]config.Alias{
 		"fast": {Models: []string{"aihub/gpt-x"}},
-	}}
+	}
 	// 别名 fast 解析出的模型 404 时，两个种子都应参与提示
-	got := Suggest([]string{"fast", "aihub/gpt-x"}, mf, []string{"aihub/gpt-y", "anti/gpt-x"})
+	got := Suggest([]string{"fast", "aihub/gpt-x"}, aliases, []string{"aihub/gpt-y", "anti/gpt-x"})
 	found := map[string]bool{}
 	for _, s := range got {
 		found[s] = true

@@ -16,7 +16,7 @@ func TestModelsCommand(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
-	for _, want := range []string{"别名（models.yaml）", "fast", "m-a → m-b", "# 快", "可用模型", "m-a", "m-b"} {
+	for _, want := range []string{"别名（config.yaml aliases 段）", "fast", "m-a → m-b", "# 快", "可用模型", "m-a", "m-b"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("输出缺 %q:\n%s", want, out)
 		}

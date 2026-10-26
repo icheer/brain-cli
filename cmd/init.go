@@ -34,7 +34,8 @@ var initCmd = &cobra.Command{
 base_url 只要是 OpenAI 兼容 API 即可，不限于网关（如 https://api.openai.com/v1）。
 api_key 刻意不设 flag（避免进入 shell history / ps 输出）：
 交互输入，或留空后由 BRAIN_API_KEY 环境变量提供。
-随后可选生成 models.yaml 别名（fast/reason/coding/vision，拉网关模型清单做选单），`,
+随后可选生成 aliases 段（fast/reason/coding/vision，拉网关模型清单做选单）；
+覆盖重建时原有别名默认保留。`,
 	RunE: runInit,
 }
 
@@ -66,7 +67,17 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// 覆盖重建时保留原有别名（单文件化后别名就在 config.yaml 里，不能跟着重建丢掉）
+	oldAliases := map[string]config.Alias{}
+	if old, _, err := config.Load(); err == nil {
+		oldAliases = old.Aliases
+	}
+	if len(oldAliases) > 0 {
+		fmt.Fprintf(stdout, "将保留原有别名 %d 个（brain config edit 可修改）\n", len(oldAliases))
+	}
+
 	cfg := config.Default()
+	cfg.Aliases = oldAliases
 
 	baseURL := initOpts.baseURL
 	if baseURL == "" {
@@ -96,28 +107,25 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		cfg.DefaultModel = initOpts.defaultModel
 	}
 
+	// 别名生成：SKILL.md 模板依赖 fast/reason/coding/vision，缺失时 -m 别名会按
+	// 字面模型 ID 发出而 404（最小安装的第一跳断点，2026-10-25 外脑评审证实）
+	regen := len(oldAliases) == 0 // 无别名默认生成；已有别名默认保留（不重建）
+	if len(oldAliases) > 0 {
+		regen = strings.EqualFold(ask("重新生成别名映射？[y/N] "), "y")
+	} else if strings.EqualFold(ask("生成别名映射 fast/reason/coding/vision？[Y/n] "), "n") {
+		regen = false
+		fmt.Fprintln(stdout, "已跳过（-m 按字面模型 ID 处理；别名示例见仓库 models.example.yaml）")
+	}
+	if regen {
+		if err := initAliases(cmd.Context(), in, stdout, stderr, &cfg); err != nil {
+			return err
+		}
+	}
+
 	if err := config.Save(cfg); err != nil {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
 	fmt.Fprintf(stdout, "已写入 %s（权限 0600）\n", p)
-
-	// 别名生成：SKILL.md 模板依赖 fast/reason/coding/vision，缺失时 -m 别名会按
-	// 字面模型 ID 发出而 404（最小安装的第一跳断点，2026-10-25 外脑评审证实）
-	mp, err := config.ModelsPath()
-	if err != nil {
-		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-	}
-	if _, statErr := os.Stat(mp); statErr == nil {
-		fmt.Fprintf(stdout, "models.yaml 已存在（%s），跳过别名生成（brain config edit 可修改）\n", mp)
-		return nil
-	}
-	if ans := ask("生成别名映射 fast/reason/coding/vision？[Y/n] "); strings.EqualFold(ans, "n") {
-		fmt.Fprintf(stdout, "已跳过。别名映射可参考仓库 models.example.yaml 放到 %s\n", mp)
-		return nil
-	}
-	if err := initAliases(cmd.Context(), in, stdout, stderr, cfg, mp); err != nil {
-		return err
-	}
 	fmt.Fprintln(stdout, "下一步：brain ping 自检（brain ping -m <别名> 可逐模型探测链可用性）")
 	return nil
 }
@@ -130,10 +138,11 @@ var aliasDefs = []struct{ name, use string }{
 	{"vision", "图表/截图解析（需多模态模型）"},
 }
 
-// initAliases 交互生成 models.yaml：拉取 /v1/models 做选单（不可达时允许直接输入 ID），
-// 每个别名可输序号或完整 ID，多个（逗号/空格分隔）组成 fallback 链，回车跳过。
+// initAliases 交互生成别名段（写入 cfg.Aliases，由调用方统一 Save）：
+// 拉取 /v1/models 做选单（不可达时允许直接输入 ID），每个别名可输序号或完整 ID，
+// 多个（逗号/空格分隔）组成 fallback 链，回车跳过。
 // in 复用 runInit 的 bufio.Reader——对同一底层 stdin 新建 Reader 会因缓冲已耗尽而瞬间 EOF。
-func initAliases(ctx context.Context, in *bufio.Reader, stdout, stderr io.Writer, cfg config.Config, mp string) error {
+func initAliases(ctx context.Context, in *bufio.Reader, stdout, stderr io.Writer, cfg *config.Config) error {
 	askLine := func(prompt string) string {
 		fmt.Fprint(stdout, prompt)
 		line, _ := in.ReadString('\n')
@@ -165,22 +174,17 @@ func initAliases(ctx context.Context, in *bufio.Reader, stdout, stderr io.Writer
 		}
 	}
 	if len(aliases) == 0 {
-		fmt.Fprintln(stdout, "未选择任何别名，跳过 models.yaml（-m 按字面模型 ID 处理）")
+		fmt.Fprintln(stdout, "未选择任何别名（-m 按字面模型 ID 处理）")
 		return nil
 	}
-	if err := config.SaveModels(config.ModelsFile{Aliases: aliases}); err != nil {
-		return exitcode.Fail(stderr, exitcode.Usage, "写入 models.yaml 失败: %v", err)
-	}
-	fmt.Fprintf(stdout, "已写入 %s（别名 %d 个）\n", mp, len(aliases))
+	cfg.Aliases = aliases
+	fmt.Fprintf(stdout, "别名 %d 个将写入 config.yaml\n", len(aliases))
 
 	// 闭环：没设 default_model 时若配出了 fast，顺手设为默认
 	if cfg.DefaultModel == "" {
 		if _, ok := aliases["fast"]; ok {
 			if ans := askLine("把 default_model 设为 fast？[Y/n] "); !strings.EqualFold(ans, "n") {
 				cfg.DefaultModel = "fast"
-				if err := config.Save(cfg); err != nil {
-					return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-				}
 				fmt.Fprintln(stdout, "default_model 已设为 fast")
 			}
 		}
