@@ -12,6 +12,7 @@
 - **Model alias routing**: `fast` / `reason` / `coding` / `vision` aliases plus automatic failover (retry with backoff, switch along the chain, noted on stderr) — agents never memorize model names
 - **Parallel cross-examination**: `brain compare -m a,b -m reason` sends the same question to several models at once; replies concatenated under `===== model: X =====` headers (`--json` gives `responses[]`). In compare, an alias is a model-group shortcut and each leg does no failover; `--blind` prints anonymous Model_A/B to guard the adjudicator against brand bias
 - **Optional reasoning effort & output budget**: `-e low|medium|high|…` and `--max-output-tokens N`, both passed through as-is (unset = model/gateway defaults; tiers are model-specific — e.g. Zhipu GLM-5.3 only has low/high/max)
+- **Generic escape hatch `--extra-body` / `--extra-headers`**: any request-body field (temperature, response_format, vendor-specific…) and HTTP header passes through as a top-level JSON assign (inline or `@file`, repeatable and merged in order); reserved keys are rejected to prevent self-sabotage, `--dry-run` shows the merged result; mirrors OpenAI SDK's extra_body/extra_headers
 - **Parseable**: exit codes 0-7 / 130 with full semantics; `--json` always emits exactly one object (jq parses unconditionally; `error.code` matches the exit code)
 - **Robust transport**: SSE long connection (survives idle-link middleboxes) + in-stream error-event detection (real gateways answer HTTP 200 with a `data:{"error":…}` payload) + 15s stderr heartbeat (local progress display, zero network traffic) + one overall budget (retries eat the same deadline) — verified item by item against real one-api-family gateway behavior, not textbook HTTP
 - **Stateless**: multi-turn context is assembled by the caller
@@ -68,7 +69,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 ## Status & roadmap
 
-**:rocket: v0.7.0 released** (M0–M7) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
+**:rocket: v0.8.0 released** (M0–M8) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
@@ -80,3 +81,4 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M5 | single-file config: config.yaml + models.yaml merged (breaking — aliases moved into the `aliases:` section, `BRAIN_MODELS` removed) | ✅ done |
 | M6 | bilingual UI (zh/en) via locale/`BRAIN_LANG`/UTC+8 timezone detection; README in both languages | ✅ done |
 | M7 | `brain compare` parallel independent sampling (alias = model-group shortcut, no per-leg failover, any leg OK → exit 0) / `--blind` anonymous review | ✅ done |
+| M8 | `--extra-body` / `--extra-headers` generic passthrough (top-level JSON assign, reserved-key rejection, `@file`, visible in `--dry-run`) | ✅ done |

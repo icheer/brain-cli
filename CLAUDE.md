@@ -7,7 +7,7 @@
 ## 开发上下文入口
 
 - **先读 [DESIGN.md](DESIGN.md) 第 0 节「已定决策」**——两轮设计评审敲定的结论，不要重新讨论已定项
-- 当前状态：**v0.7.0 已发布（M0–M7）**——`brain compare` 并行交叉验证（别名=模型组快捷方式、`--blind` 匿名）+ CLI 全量双语 zh/en（`BRAIN_LANG`/locale/UTC+8 检测链；README 英文主版 + README.zh-CN.md 互链）；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
+- 当前状态：**v0.8.0 已发布（M0–M8）**——`--extra-body`/`--extra-headers` 通用透传口、`brain compare` 并行交叉验证（别名=模型组快捷方式、`--blind` 匿名）、CLI 全量双语 zh/en（`BRAIN_LANG`/locale/UTC+8 检测链；README 英文主版 + README.zh-CN.md 互链）；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
 - 架构、配置文件格式、退出码表、超时重试策略等规范全部在 DESIGN.md 内，以它为准
 
 ## 铁律

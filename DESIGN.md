@@ -20,7 +20,7 @@
 | 定位 | 纯咨询/分析外脑，不做 Function Calling——指 brain 作为客户端不编排工具；端点背后是裸模型还是自带工具调用的第三方领域 agent 均不关心（OpenAI 兼容协议只约定文本进出，2026-10-26 随 README「领域 agent」段落澄清） |
 | 输出落盘 | 不做 `-o`；统一用 shell 重定向 `> file`（SKILL.md 写明该模式）；Windows 重定向编码出现真实用户反馈再考虑 |
 | `--json` 失败语义 | 无论成败，stdout 恒定输出**一个** JSON 对象（失败时填 `error` 字段），退出码照旧（M1 落地） |
-| 采样参数 | v1 不暴露也不默认传 `temperature` 等采样调优参数；**max_tokens 例外**（2026-10-25 第二轮双外脑评审收敛后修订）——`--max-output-tokens` 作为输出预算控制 opt-in 透传：防思维链吃满输出预算导致空正文、限制长输出费用；0=字段缺席 |
+| 采样参数 | 不为采样调优参数设专属 flag：`-e`/`--max-output-tokens` 保留为高频专用（opt-in 纯透传，空/0=字段缺席）；其余请求体参数（temperature/top_k/response_format/厂商私有字段…）统一走 `--extra-body`（M8，2026-10-26 修订原「v1 不暴露也不默认传」决策）：JSON 对象（内联或 `@file`，可重复有序合并，后者同名键覆盖）顶层 assign 纯透传，效果与支持面由上游决定（网关 400 即时报错）；body 保留字 model/messages/stream/stream_options/reasoning_effort/max_tokens 与 headers 保留字 Authorization/Content-Type/Accept 直接 exit 1 拒绝——防静默覆盖生命线字段，且与 `-e`/`--max-output-tokens` 的优先级问题因冲突不可发生而消解；`--extra-headers` 同构（默认头之后应用，User-Agent 允许覆盖）；`--dry-run` 展示合并结果；设计对齐 OpenAI SDK 的 extra_body/extra_headers 逃生口 |
 | aliases 段缺失 | 可选；缺失时 `-m` 直接按字面模型 ID 处理 |
 | fallback 范围 | 连接失败 / 超时 / 429 / 5xx / 404 可切换；401/403 不切（直接 exit 2）；已输出正文永不切 |
 | base_url 默认值 | 公开 release 不带默认值；缺失 → exit 7 引导 `brain config set`；内部定制走 ldflags 注入（同版本号机制） |
@@ -118,6 +118,7 @@ aliases:
 - [x] `-i` 图片块在 content 数组中排在文本块之后；`-s` 可重复，以空行连接
 - [x] `-e / --reasoning-effort <档位>`：推理深度纯透传（第 0 节已定；不设则请求体无此字段，档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - [x] `--max-output-tokens <N>`：输出预算（max_tokens）纯透传（第 0 节修订后的例外；0=字段缺席用网关默认，负值 exit 1）
+- [x] `--extra-body <json|@file>` / `--extra-headers <json|@file>`（M8）：JSON 对象通用透传口，可重复有序合并（后者同名键覆盖）；保留字拒绝见第 0 节「采样参数」行；ask/compare 共有，compare 全腿共用同一份；`--dry-run` 展示合并结果
 - [x] `--dry-run`：组装完成后输出最终 messages（单行 JSON，本地图片 data URL 截断展示），不发起网络请求；与 `--json`/`--stream` 互斥
 
 ### 3.2 输出
@@ -206,6 +207,10 @@ aliases:
   - 状态（2026-10-26）：完成——决策见第 0 节「多模型编排」；ask/compare 输入装配抽为共用 `assembleMessages`（行为不变，既有 ask 测试全绿）；单测覆盖 stdout 逐字节分隔头/展开去重/≥2 校验/部分失败/全失败 401→exit 2/盲测映射/dry-run 零请求
   - e2e（真实网关，2026-10-26）：部分失败实弹——cpa/gemini-3.8-flash 腿 model_not_found（清单列出≠可用，老问题）、sh/deepseek-v4.1-flash 腿成功 → exit 0 + 失败腿 stderr 明示 + `1/2 ok` 汇总；`--json --blind` 双腿（deepseek + fox/fable）成功：Model_A/B 匿名、stderr 真名映射、usage 逐腿；`--dry-run` 零请求
   - 来源：第三轮双外脑评审（fox/claude-opus-5-5 + cpa/gemini-4-argon-high，均针对「意义感」提问）唯一双收敛头牌——把项目自己实践的「双外脑交叉验证」内化为产品原语；两模型均主动与 backlog 的串行 `-m m1,m2` fallback 划清界限；Gemini 的内建 judge 提议被否（裁决留给宿主——宿主自身是模型），其 `--blind` 采纳；用户补充两个关键语义：别名=模型组快捷方式（一条 `-m` 携带整组）、每腿无故障转移（静默转移摧毁「谁回答了什么」的透明性）
+- **M8**：`--extra-body` / `--extra-headers` 通用透传口
+  - 状态（2026-10-26）：完成——保留字拒绝（body 生命线字段+专属 flag 字段、headers 鉴权字段）、`@file` 取值、可重复有序合并、`--dry-run` 可见合并结果；单测覆盖透传/合并/保留字/UA 覆盖/compare 全腿共用/畸形输入
+  - e2e（真实网关，2026-10-26）：temperature 透传被接受；`response_format:json_object` 在 sh/deepseek-v4.1-flash 上真实生效（返回合法 JSON）；自定义 UA 请求成功；保留字拒绝零成本生效
+  - 设计取舍：用户独立提出与 OpenAI SDK extra_body/extra_headers 同构的方案——一次性终结参数枚举军备竞赛，网关侧新参数/厂商私有字段永远无需跟版；`-e`/`--max-output-tokens` 保留为高频快车道并纳入保留字（冲突不可发生 ⇒ 无优先级问题）；`--output-schema` 专项 flag 取消（`--extra-body '{"response_format":…}'` 覆盖该场景）；此前讨论过的 `--json-object` 也无需独立 flag
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 
