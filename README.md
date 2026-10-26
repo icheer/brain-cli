@@ -63,6 +63,8 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 **Rule of thumb**: "have a different vendor's model cross-check this conclusion / break out of a loop" → brain; "same-model parallel repo-scale exploration and summarization" → subagent. They compose: subagents gather material, brain adjudicates across models.
 
+**Swapping brains doesn't stop at swapping models — the endpoint can be a domain agent**: in niches like information gathering, financial research, fact-checking and personal assistance, a growing number of standalone agents expose OpenAI-compatible endpoints with internal tool use of their own. To the caller it is all a black box: send in the relevant context, take back the result — how the remote side reasons and which tools it orchestrates is its business. The "no Function Calling" rule constrains brain itself (as a client it orchestrates no tools), never what sits behind the endpoint. Precisely because the contract is plain text in and out, bare models and full agents alike share the same exit-code / `--json` / alias / heartbeat conventions. One config points at a single base_url; to mix several endpoints, front them with an aggregating gateway (OpenRouter / the one-api family) or point `BRAIN_CONFIG` at another config file.
+
 ## Status & roadmap
 
 **:rocket: v0.6.0 released** (M0–M6) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
