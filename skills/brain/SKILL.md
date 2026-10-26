@@ -29,7 +29,7 @@ stdout 逐行输出 OK；按 exit code 处理失败（7=配置缺失，按 stder
 ## 何时调用
 
 **调用**：
-- 复杂推理结论需要交叉验证（`-m reason`）
+- 复杂推理结论需要交叉验证（`-m reason`）；要跨厂商多模型互证一发搞定用 `brain compare`（费用×腿数，慎用）
 - 代码审查想要第二意见（`-m coding`）
 - 图表/截图/架构图解析（`-m vision`）
 - 尝试多种方案均失败、陷入循环，需要外部视角破局
@@ -61,6 +61,11 @@ brain ask -m reason "详细推演方案A的风险" > /tmp/brain-out.md
 
 # 需要元数据（usage/latency/finish_reason/思维链）时用 --json，stdout 恒定单对象
 brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
+
+# 并行交叉验证：同题并发多模型（别名=模型组快捷方式展开为整组；可混字面 ID、逗号分隔）
+brain compare -m reason -m coding "方案A的并发风险在哪"      # stdout 按 ===== model: X ===== 分隔头拼接
+brain compare -m reason --json "推演方案" | jq -r '.responses[] | select(.ok) | .content'
+brain compare -m reason --blind "结论可靠吗"                 # 匿名 Model_A/B，防你偏向同厂牌答案
 ```
 
 ## 工程注意
@@ -73,6 +78,7 @@ brain ask -m reason --json "推演方案" | jq '{content, usage, finish_reason}'
 - **退出码优先读**：0 成功；1 用法错误；2 认证失败（检查 api_key，勿重试）；3 限流耗尽（稍后再试）；4 超时（可换 fast 模型重试）；5 上游错误（stderr 里「相近的可用模型」提示可直接换模型重试）；6 输入超限（拆分后重试）；7 配置缺失（先修复）
 - stdout 只有模型正文（可直接采信/落盘）；耗时/心跳/警告/转移提示全在 stderr
 - `finish_reason=length` 且正文为空 = 思维链耗尽了输出预算：换 reason 别名里更短的模型、`-e low` 降推理深度重试，或改小问题粒度
+- **compare 是并发原语**：同题并行发给 N 个模型，费用与输入×腿数；≥1 腿成功即 exit 0，失败腿在 stderr 与 `responses[]` 中明示；compare 语境下别名展开为整组且**无故障转移**（静默转移会摧毁「谁回答了什么」）；裁决由你做，brain 不内建裁判——对比原文后自己下结论，节流比 ask 更严（一次任务 ≤2 次）
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
 - **stderr 文案语言随环境自动中英切换**（`BRAIN_LANG` / locale / UTC+8 时区）；你的判断一律以退出码与 `--json` 字段为准，不要匹配 stderr 文案
 

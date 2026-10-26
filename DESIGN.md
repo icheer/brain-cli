@@ -32,6 +32,7 @@
 | reasoning_effort | opt-in 纯透传：`-e/--reasoning-effort` 设置才携带该字段；不设时字段缺席、各模型用自身默认；不校验枚举；不做厂商方言翻译（网关职责——实测网关已译 Anthropic 方言） |
 | `--json` 错误结构 | error 对象扩展 `type`（auth/model_not_found/rate_limited/timeout/upstream/network/invalid_request/config_missing/input_too_large/usage/interrupted）、`retryable`、`upstream_status`、`attempted_models`；纯增量，code/message 语义不变 |
 | 界面语言 | 中英双语（zh/en）：`BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（zh* → 中文，其他已设值 → 英文）> 时区偏移兜底（UTC+8 → 中文，否则英文；+8 区内无夏令时，按偏移判断免维护时区名清单）；语言随环境每次动态读取；stdout 模型正文永不翻译；Agent 分支以退出码与 --json 字段为准，不依赖 stderr 文案语言 |
+| 多模型编排 | `brain compare`：同一问题**并行独立采样** ≥2 个模型，原文按分隔头拼接（`--json` 为 `responses[]`），裁决与合成留给宿主（宿主自身是模型，不内建 judge）；别名在 compare 语境下是**模型组快捷方式**——`-m reason` 展开为该链全部模型（与 ask 的链首位+容灾语义不同，帮助文案写明）；每腿为具体模型**不做故障转移**（静默转移摧毁「谁回答了什么」的透明性），同模型重试仍允许；部分失败语义同 `ping -m`：≥1 腿成功 exit 0、失败腿 stderr+`--json` 明示，全失败按最可行动码（2>3>4>5）；`--blind` 输出匿名 `Model_A/B/…`（真名映射走 stderr，防宿主裁决的品牌偏见）；council（串行辩论）名称保留（第 8 节） |
 
 ## 1. 目标与非目标
 
@@ -158,6 +159,7 @@ aliases:
 - [x] `/v1/models` 缓存放 `os.UserCacheDir()/brain/models.json`（与配置目录区分），损坏即弃用重拉
 - [x] `brain ping -m <别名或ID>`：逐模型探测 fallback 链（各发一次极小补全请求；`/v1/models` 列出≠本 key 可用，探测才是硬证据）；链上至少一个可用即通过，主模型挂时 stderr 明示（防静默降级到次优模型）
 - [x] `ping --json` / `models --json`：机器可读输出（ping 成败恒定单对象，error 与 ask --json 同构；`ping -m` 时含 `probes` 数组：model / ok / latency_ms / error——逐模型探测结果无需解析 stderr）
+- [x] `brain compare`（M7）：`-m` 展开规则与失败语义见第 0 节「多模型编排」；无 `-m` 用 default_model 展开，展开后 <2 → exit 1；stdout 为成功腿的 `===== model: X =====` 分隔拼接（顺序=解析序而非完成序，失败腿不出现在 stdout，分隔头是语言中立的恒定契约不参与 i18n）；`--stream`/`--show-thinking` 不提供（多模型交错破坏 stdout 纯净）
 
 ## 5. 分发与工程化
 - [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（配置已过 `goreleaser check`，待首个 tag 全链路验证）
@@ -200,6 +202,10 @@ aliases:
 - **M6**：界面双语（zh/en）
   - 状态（2026-10-26）：完成——CLI 全量（help/flag/错误/stderr/向导）+ README 中英双语（README.md 英文主版 + README.zh-CN.md，顶部互链）；检测链见第 0 节「界面语言」行；实现为 `internal/i18n` 的 `T(zh,en)/Tf` 双串直书，漏译即编译不出而非运行时缺文案；测试经 TestMain 钉 BRAIN_LANG=zh 保证既有断言稳定，英文路径有锁定测试
   - 设计取舍：拒绝按时区独判（语言是用户声明不是地理位置——欧美时区的中国开发者是核心受众）；时区仅作 locale 全空时的兜底且只认 UTC+8 偏移
+- **M7**：`brain compare`（并行独立采样）+ `--blind` 匿名盲测 + README 动线重排（「为什么」前置：同源偏差一句 + 脏网关实测措辞）
+  - 状态（2026-10-26）：完成——决策见第 0 节「多模型编排」；ask/compare 输入装配抽为共用 `assembleMessages`（行为不变，既有 ask 测试全绿）；单测覆盖 stdout 逐字节分隔头/展开去重/≥2 校验/部分失败/全失败 401→exit 2/盲测映射/dry-run 零请求
+  - e2e（真实网关，2026-10-26）：部分失败实弹——cpa/gemini-3.8-flash 腿 model_not_found（清单列出≠可用，老问题）、sh/deepseek-v4.1-flash 腿成功 → exit 0 + 失败腿 stderr 明示 + `1/2 ok` 汇总；`--json --blind` 双腿（deepseek + fox/fable）成功：Model_A/B 匿名、stderr 真名映射、usage 逐腿；`--dry-run` 零请求
+  - 来源：第三轮双外脑评审（fox/claude-opus-5-5 + cpa/gemini-4-argon-high，均针对「意义感」提问）唯一双收敛头牌——把项目自己实践的「双外脑交叉验证」内化为产品原语；两模型均主动与 backlog 的串行 `-m m1,m2` fallback 划清界限；Gemini 的内建 judge 提议被否（裁决留给宿主——宿主自身是模型），其 `--blind` 采纳；用户补充两个关键语义：别名=模型组快捷方式（一条 `-m` 携带整组）、每腿无故障转移（静默转移摧毁「谁回答了什么」的透明性）
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 

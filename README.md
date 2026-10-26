@@ -10,6 +10,7 @@
 
 - **Agent-friendly**: stdout carries only the model reply; metadata/warnings/heartbeat all go to stderr. Pipes / `-f` multi-file / `-i` image multimodal input work out of the box
 - **Model alias routing**: `fast` / `reason` / `coding` / `vision` aliases plus automatic failover (retry with backoff, switch along the chain, noted on stderr) — agents never memorize model names
+- **Parallel cross-examination**: `brain compare -m a,b -m reason` sends the same question to several models at once; replies concatenated under `===== model: X =====` headers (`--json` gives `responses[]`). In compare, an alias is a model-group shortcut and each leg does no failover; `--blind` prints anonymous Model_A/B to guard the adjudicator against brand bias
 - **Optional reasoning effort & output budget**: `-e low|medium|high|…` and `--max-output-tokens N`, both passed through as-is (unset = model/gateway defaults; tiers are model-specific — e.g. Zhipu GLM-5.3 only has low/high/max)
 - **Parseable**: exit codes 0-7 / 130 with full semantics; `--json` always emits exactly one object (jq parses unconditionally; `error.code` matches the exit code)
 - **Robust transport**: SSE long connection (survives idle-link middleboxes) + in-stream error-event detection (real gateways answer HTTP 200 with a `data:{"error":…}` payload) + 15s stderr heartbeat (local progress display, zero network traffic) + one overall budget (retries eat the same deadline) — verified item by item against real one-api-family gateway behavior, not textbook HTTP
@@ -61,13 +62,13 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 **Each one's weaknesses**: brain cannot see your conversation or repo (underfed input gets off-target answers), depends on gateway availability, and cross-vendor behavioral differences (effort tiers, defaults) need probing; subagent review is same-source (the same model checking its own conclusions cannot catch systematic bias), and heavy parallelism inflates token spend.
 
-**Rule of thumb**: "have a different vendor's model cross-check this conclusion / break out of a loop" → brain; "same-model parallel repo-scale exploration and summarization" → subagent. They compose: subagents gather material, brain adjudicates across models.
+**Rule of thumb**: "have a different vendor's model cross-check this conclusion / break out of a loop" → brain (multi-model cross-examination in one shot: `brain compare`); "same-model parallel repo-scale exploration and summarization" → subagent. They compose: subagents gather material, brain adjudicates across models.
 
 **Swapping brains doesn't stop at swapping models — the endpoint can be a domain agent**: in niches like information gathering, financial research, fact-checking and personal assistance, a growing number of standalone agents expose OpenAI-compatible endpoints with internal tool use of their own. To the caller it is all a black box: send in the relevant context, take back the result — how the remote side reasons and which tools it orchestrates is its business. The "no Function Calling" rule constrains brain itself (as a client it orchestrates no tools), never what sits behind the endpoint. Precisely because the contract is plain text in and out, bare models and full agents alike share the same exit-code / `--json` / alias / heartbeat conventions. One config points at a single base_url; to mix several endpoints, front them with an aggregating gateway (OpenRouter / the one-api family) or point `BRAIN_CONFIG` at another config file.
 
 ## Status & roadmap
 
-**:rocket: v0.6.0 released** (M0–M6) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
+**:rocket: v0.7.0 released** (M0–M7) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
@@ -78,3 +79,4 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M4 | `--max-output-tokens` output budget passthrough / `BRAIN_DEFAULT_MODEL` env | ✅ done |
 | M5 | single-file config: config.yaml + models.yaml merged (breaking — aliases moved into the `aliases:` section, `BRAIN_MODELS` removed) | ✅ done |
 | M6 | bilingual UI (zh/en) via locale/`BRAIN_LANG`/UTC+8 timezone detection; README in both languages | ✅ done |
+| M7 | `brain compare` parallel independent sampling (alias = model-group shortcut, no per-leg failover, any leg OK → exit 0) / `--blind` anonymous review | ✅ done |

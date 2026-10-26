@@ -10,6 +10,7 @@
 
 - **Agent-Friendly**：stdout 只输出模型正文，元数据/警告/心跳全走 stderr；管道 / `-f` 多文件 / `-i` 图片多模态输入开箱即用
 - **模型别名路由**：`fast` / `reason` / `coding` / `vision` 别名 + 自动故障转移（重试退避、换链上模型、stderr 提示），Agent 无需记忆模型名
+- **并行交叉验证**：`brain compare -m a,b -m reason` 同题并发多模型，原文按 `===== model: X =====` 分隔头拼接（`--json` 为 `responses[]`）；compare 里别名=模型组快捷方式，每腿不做故障转移；`--blind` 输出匿名 Model_A/B 防裁决的品牌偏见
 - **可选推理深度与输出预算**：`-e low|medium|high|…`、`--max-output-tokens N` 纯透传（不设则各模型/网关默认；档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - **可解析**：退出码 0-7 / 130 全量语义；`--json` 成败恒定输出单对象（`jq` 无条件解析，`error.code` 与退出码一致）
 - **健壮传输**：SSE 长连接（防中间层空闲断连）+ 流内错误事件识别（真实网关会以 HTTP 200 夹带 `data:{"error":…}` 回错）+ stderr 15s 心跳（本地进度显示，不产生网络流量）+ 总预算控制（重试也吃同一个 deadline）——在 one-api 系脏网关的真实行为上逐项实测，而非假设教科书式 HTTP
@@ -61,13 +62,13 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 
 **各自的短板**：brain 看不到你的会话与仓库（喂料不全会答非所问），依赖网关可用性，跨厂商行为差异（推理档位、默认值）需要摸底；subagent 复核同源（同一个模型检查自己的结论，系统性偏差检不出来），并行多了 token 消耗放大。
 
-**选型经验**：要「不同厂商模型对同一结论交叉验证 / 死循环破局」→ brain；要「同模型并行做仓库级探索、汇总」→ subagent。两者可叠加：subagent 负责读材料，brain 负责跨模型裁决。
+**选型经验**：要「不同厂商模型对同一结论交叉验证 / 死循环破局」→ brain（多模型互证可一发 `brain compare`）；要「同模型并行做仓库级探索、汇总」→ subagent。两者可叠加：subagent 负责读材料，brain 负责跨模型裁决。
 
 **「换脑子」不限于换模型——端点后面也可以是领域 agent**：信息采集、金融投研、事实核查、个人助理等细分领域，越来越多的独立 agent 以 OpenAI 兼容协议暴露端点，内部自带工具调用。对调用方而言这一切都是黑盒：传入相关上下文、拿回结果即可，远端如何推理、编排哪些工具无需关心。「不做 Function Calling」约束的只是 brain 自身（作为客户端不编排工具），从不限制端点背后是什么——正因契约只是纯文本进出，裸模型和完整 agent 都能无差别地享有同一套退出码 / `--json` / 别名 / 心跳约定。单份配置只指向一个 base_url，要混用多个端点可走聚合网关（OpenRouter / one-api 系），或用 `BRAIN_CONFIG` 指向另一份配置。
 
 ## 状态与路线
 
-**:rocket: v0.6.0 已发布**（M0–M6）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.7.0 已发布**（M0–M7）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -78,3 +79,4 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 | M4 | `--max-output-tokens` 输出预算透传 / `BRAIN_DEFAULT_MODEL` 环境变量 | ✅ 完成 |
 | M5 | 配置单文件化：config.yaml + models.yaml 合并（breaking——别名进 aliases 段，`BRAIN_MODELS` 删除） | ✅ 完成 |
 | M6 | 界面双语（zh/en）：locale / `BRAIN_LANG` / UTC+8 时区检测；README 中英双语 | ✅ 完成 |
+| M7 | `brain compare` 并行独立采样（别名=模型组快捷方式、每腿无故障转移、≥1 成功即 exit 0）/ `--blind` 匿名盲测 | ✅ 完成 |
