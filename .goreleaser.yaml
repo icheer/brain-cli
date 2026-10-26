@@ -35,7 +35,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
-      - models.example.yaml
+      - config.example.yaml
 
 checksum:
   name_template: SHA256SUMS
