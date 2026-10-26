@@ -4,7 +4,7 @@
 
 > The repo is named `brain-cli`; the binary command is **`brain`**.
 
-`brain` is a minimalist CLI that acts as a "side brain" for host agents (Claude Code, Gemini CLI, etc.): it calls an LLM gateway via the OpenAI Chat Completions compatible protocol, performs one high-quality advisory/analysis call, and hands the result back to the agent cleanly.
+`brain` is a minimalist CLI that acts as a "side brain" for host agents (Claude Code, Gemini CLI, etc.): it calls an LLM gateway via the OpenAI Chat Completions compatible protocol, performs one high-quality advisory/analysis call, and hands the result back to the agent cleanly. The same model reviewing its own conclusions cannot catch its own systematic bias — brain plugs in heterogeneous cross-vendor models as an independent second opinion.
 
 ## Highlights
 
@@ -12,7 +12,7 @@
 - **Model alias routing**: `fast` / `reason` / `coding` / `vision` aliases plus automatic failover (retry with backoff, switch along the chain, noted on stderr) — agents never memorize model names
 - **Optional reasoning effort & output budget**: `-e low|medium|high|…` and `--max-output-tokens N`, both passed through as-is (unset = model/gateway defaults; tiers are model-specific — e.g. Zhipu GLM-5.3 only has low/high/max)
 - **Parseable**: exit codes 0-7 / 130 with full semantics; `--json` always emits exactly one object (jq parses unconditionally; `error.code` matches the exit code)
-- **Robust transport**: SSE long connection (survives idle-link middleboxes) + 15s stderr heartbeat (local progress display, zero network traffic) + one overall budget (retries eat the same deadline)
+- **Robust transport**: SSE long connection (survives idle-link middleboxes) + in-stream error-event detection (real gateways answer HTTP 200 with a `data:{"error":…}` payload) + 15s stderr heartbeat (local progress display, zero network traffic) + one overall budget (retries eat the same deadline) — verified item by item against real one-api-family gateway behavior, not textbook HTTP
 - **Stateless**: multi-turn context is assembled by the caller
 - **Bilingual UI (zh/en)**: chosen automatically via `BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG` (`zh*` → Chinese, anything else set → English) > timezone fallback (UTC+8 → Chinese); override any time with `BRAIN_LANG=zh|en`
 - **Cross-platform**: darwin / linux / windows × amd64 / arm64, released via goreleaser, ~9MB static binary
@@ -53,7 +53,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 | Dimension | brain (side-brain CLI) | host subagent |
 | --- | --- | --- |
-| Model | any external model on the gateway (cross-vendor — a genuinely independent second opinion) | same model as the host (self-review; blind spots correlate with the main thread) |
+| Model | any external model on the gateway (cross-vendor — a genuinely independent second opinion) | same-source as the host (self-review; systematic bias correlates with the main thread) |
 | Context | sees only the prompt you assemble (bring your own material / `-f`) | can read files and run commands to explore the repo (great for wide sweeps) |
 | Side effects | zero — text in, text out, no tool privileges | inherits host tools (file I/O, command execution) |
 | Contract | exit codes 0-7/130, `--json`, timeouts/budgets — all programmable | returns report text; lifecycle managed by the host |
