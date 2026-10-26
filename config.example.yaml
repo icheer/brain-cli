@@ -1,0 +1,31 @@
+# brain 配置示例（占位符，无真实密钥；本文件仅作参考，不参与运行）
+#
+# 用法：复制到 `brain config path` 显示的位置并按需修改（或直接 brain init 交互生成），
+# 整个文件含密钥，权限保持 0600，永不提交进仓库。
+# 别名链 models 前者为主，故障自动切换后者（M1 起生效）；
+# use 为场景标注，供 `brain models` 展示与 SKILL.md 描述参考。
+# 下方示例模型 ID 来自本项目的测试网关，请换成你自己网关的模型。
+#
+# 注意：网关 /v1/models 列出的模型未必都对本 key 可用（401/403/404），
+# 配置前建议逐个实测：brain ping -m <别名> 逐链探测（或 brain ask -m <model-id> "只回复:OK"）
+base_url: https://your-gateway.example/v1   # 任意 OpenAI 兼容 API（如 https://api.openai.com/v1）
+api_key: sk-your-key                        # 你的密钥
+default_model: fast                         # 对应下方别名，也可直接写模型 ID
+timeout_seconds: 300                        # 兼容长推理模型
+max_input_bytes: 1048576                    # 输入保护上限（1 MiB）
+retry_max: 2                                # 同一模型最大重试次数
+models_cache_ttl_seconds: 86400
+user_agent: ""                              # 逃生口：个别网关校验 UA 时覆盖默认 brain/<version>；不伪装浏览器 UA
+aliases:
+  fast:
+    models: [anti/gemini-3.8-flash, claude-haiku-5-5]
+    use: "快速问答、简单总结"
+  reason:
+    models: [aihub/gpt-6-astra, claude-opus-5-5]
+    use: "复杂推理、方案交叉验证"
+  coding:
+    models: [claude-sonnet-5-5, fox/claude-sonnet-5-5]
+    use: "代码审查、重构建议"
+  vision:
+    models: [fox/gemini-3.1-pro, fox/gemini-3.5-flash]
+    use: "图表/截图解析"

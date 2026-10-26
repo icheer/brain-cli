@@ -114,7 +114,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		regen = strings.EqualFold(ask("重新生成别名映射？[y/N] "), "y")
 	} else if strings.EqualFold(ask("生成别名映射 fast/reason/coding/vision？[Y/n] "), "n") {
 		regen = false
-		fmt.Fprintln(stdout, "已跳过（-m 按字面模型 ID 处理；别名示例见仓库 models.example.yaml）")
+		fmt.Fprintln(stdout, "已跳过（-m 按字面模型 ID 处理；完整示例见仓库 config.example.yaml）")
 	}
 	if regen {
 		if err := initAliases(cmd.Context(), in, stdout, stderr, &cfg); err != nil {
@@ -130,7 +130,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// aliasDefs 标准别名及场景标注（与 models.example.yaml / SKILL.md 模板一致）。
+// aliasDefs 标准别名及场景标注（与 config.example.yaml / SKILL.md 模板一致）。
 var aliasDefs = []struct{ name, use string }{
 	{"fast", "快速问答、简单总结"},
 	{"reason", "复杂推理、方案交叉验证"},

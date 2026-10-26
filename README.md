@@ -35,7 +35,7 @@ go install github.com/icheer/brain-cli@latest   # 开发者
 brain init                                            # 交互向导，或下面三行：
 brain config set base_url https://api.openai.com/v1   # 任意 OpenAI 兼容服务
 brain config set api_key sk-xxxx
-brain config set default_model gpt-5.6                # 可选；别名可写进 config.yaml 的 aliases 段（示例见 models.example.yaml）
+brain config set default_model gpt-5.6                # 可选；完整配置示例见 config.example.yaml
 
 # 第一问
 brain ping
