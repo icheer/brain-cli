@@ -29,13 +29,17 @@ type StreamOptions struct {
 // ChatRequest 只声明 brain 用到的字段；采样参数刻意不传（DESIGN.md 第 0 节已定，
 // max_tokens 例外——它是输出预算控制而非采样调优）。
 // reasoning_effort / max_tokens 均为 opt-in 纯透传：显式设置才携带，空则字段缺席。
+// ExtraBody / ExtraHeaders 是 --extra-body / --extra-headers 的挂载点（M8）：
+// 不参与序列化，前者在序列化时顶层 assign 进最终请求体，后者在发送时覆盖默认请求头。
 type ChatRequest struct {
-	Model           string         `json:"model"`
-	Messages        []Message      `json:"messages"`
-	Stream          bool           `json:"stream"`
-	StreamOptions   *StreamOptions `json:"stream_options,omitempty"`
-	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
-	MaxTokens       int            `json:"max_tokens,omitempty"`
+	Model           string            `json:"model"`
+	Messages        []Message         `json:"messages"`
+	Stream          bool              `json:"stream"`
+	StreamOptions   *StreamOptions    `json:"stream_options,omitempty"`
+	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
+	MaxTokens       int               `json:"max_tokens,omitempty"`
+	ExtraBody       map[string]any    `json:"-"`
+	ExtraHeaders    map[string]string `json:"-"`
 }
 
 // Usage 是一次调用的 token 计量（--json 输出用）。

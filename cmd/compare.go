@@ -32,6 +32,8 @@ type compareOptions struct {
 	maxInputBytes   int64
 	maxOutputTokens int
 	reasoningEffort string
+	extraBody       []string
+	extraHeaders    []string
 	jsonOut         bool
 	quiet           bool
 	dryRun          bool
@@ -91,6 +93,8 @@ func init() {
 	compareCmd.Flags().IntVar(&compareOpts.maxOutputTokens, "max-output-tokens", 0,
 		i18n.T("输出预算（max_tokens）纯透传；0=不传用网关默认",
 			"output budget (max_tokens), passed through as-is; 0 = omit, gateway default"))
+	compareCmd.Flags().StringArrayVar(&compareOpts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
+	compareCmd.Flags().StringArrayVar(&compareOpts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
 	compareCmd.Flags().BoolVarP(&compareOpts.quiet, "quiet", "q", false,
 		i18n.T("静默 stderr：关闭心跳/耗时提示（警告与错误保留）",
 			"quiet stderr: no heartbeat/elapsed chatter (warnings and errors kept)"))
@@ -139,6 +143,8 @@ type compareDryRunOut struct {
 	Models          []string          `json:"models"`
 	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
 	MaxOutputTokens int               `json:"max_output_tokens,omitempty"`
+	ExtraBody       map[string]any    `json:"extra_body,omitempty"`
+	ExtraHeaders    map[string]string `json:"extra_headers,omitempty"`
 	TextBytes       int64             `json:"text_bytes"`
 	Messages        []gateway.Message `json:"messages"`
 }
@@ -167,6 +173,17 @@ func runCompare(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	if compareOpts.maxOutputTokens < 0 {
 		return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("--max-output-tokens 应为正整数", "--max-output-tokens must be a positive integer"))
+	}
+
+	// --extra-body / --extra-headers：通用透传口（保留字拒绝见 extras.go），全腿共用
+	var extraBody map[string]any
+	var extraHeaders map[string]string
+	if len(compareOpts.extraBody) > 0 || len(compareOpts.extraHeaders) > 0 {
+		var exErr error
+		extraBody, extraHeaders, exErr = parseExtraFlags(compareOpts.extraBody, compareOpts.extraHeaders)
+		if exErr != nil {
+			return exitcode.Fail(stderr, exitcode.Usage, "%v", exErr)
+		}
 	}
 
 	// --json：无论成败 stdout 恒定输出一个 JSON 对象；rawRep 为全失败时的代表错误。
@@ -270,6 +287,8 @@ func runCompare(cmd *cobra.Command, args []string) (retErr error) {
 			Models:          models,
 			ReasoningEffort: compareOpts.reasoningEffort,
 			MaxOutputTokens: compareOpts.maxOutputTokens,
+			ExtraBody:       extraBody,
+			ExtraHeaders:    extraHeaders,
 			TextBytes:       textBytes,
 			Messages:        redactMessages(messages),
 		})
@@ -362,6 +381,8 @@ func runCompare(cmd *cobra.Command, args []string) (retErr error) {
 						Messages:        messages,
 						ReasoningEffort: compareOpts.reasoningEffort,
 						MaxTokens:       compareOpts.maxOutputTokens,
+						ExtraBody:       extraBody,
+						ExtraHeaders:    extraHeaders,
 					}
 				},
 				func(content, reasoning string) {})

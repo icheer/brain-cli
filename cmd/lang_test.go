@@ -8,6 +8,9 @@ import (
 
 // 英文界面：BRAIN_LANG=en 时错误提示输出英文（锁定语言切换路径）。
 func TestEnglishMessages(t *testing.T) {
+	// cobra 复用命令对象，先清掉其他测试残留的 flag 值（本测试不经 setupConfig）
+	askOpts = askOptions{}
+	compareOpts = compareOptions{}
 	t.Setenv("BRAIN_LANG", "en")
 	t.Setenv("BRAIN_CONFIG", filepath.Join(t.TempDir(), "absent.yaml"))
 	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY"} {

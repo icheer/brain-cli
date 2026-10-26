@@ -22,6 +22,26 @@ type ChatResult struct {
 	Usage        *Usage // 网关回传则为非 nil
 }
 
+// marshalWithExtras 序列化请求体并应用 --extra-body：结构体字段先落 map，
+// extras 顶层键 assign 覆盖（浅层，不递归合并）。保留字由 cmd 层校验，此处信任入参。
+func marshalWithExtras(req ChatRequest) ([]byte, error) {
+	if len(req.ExtraBody) == 0 {
+		return json.Marshal(req)
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range req.ExtraBody {
+		m[k] = v
+	}
+	return json.Marshal(m)
+}
+
 // DeltaHandler 收到增量时的回调（content/reasoning 各自可为空串）。
 // M2 的 --stream 在此挂载增量打印。
 type DeltaHandler func(content, reasoning string)
@@ -51,7 +71,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 	req.Stream = true
 	req.StreamOptions = &StreamOptions{IncludeUsage: true}
 
-	body, err := json.Marshal(req)
+	body, err := marshalWithExtras(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", i18n.T("序列化请求失败", "failed to marshal request"), err)
 	}
@@ -63,6 +83,11 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 	httpReq.Header.Set("User-Agent", UserAgent)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	// --extra-headers 在默认头之后应用：同名覆盖（如 User-Agent）；
+	// 保留字（Authorization/Content-Type/Accept）由 cmd 层拒绝，这里信任入参。
+	for k, v := range req.ExtraHeaders {
+		httpReq.Header.Set(k, v)
+	}
 
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {

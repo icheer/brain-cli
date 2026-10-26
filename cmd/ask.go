@@ -32,6 +32,8 @@ type askOptions struct {
 	maxInputBytes   int64
 	maxOutputTokens int
 	reasoningEffort string
+	extraBody       []string
+	extraHeaders    []string
 	jsonOut         bool
 	stream          bool
 	showThinking    bool
@@ -84,6 +86,8 @@ func init() {
 	askCmd.Flags().IntVar(&askOpts.maxOutputTokens, "max-output-tokens", 0,
 		i18n.T("输出预算（max_tokens）纯透传：防思维链吃满输出预算、限制长输出；0=不传用网关默认",
 			"output budget (max_tokens), passed through as-is: guards against thinking eating the whole budget, caps long output; 0 = omit, gateway default"))
+	askCmd.Flags().StringArrayVar(&askOpts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
+	askCmd.Flags().StringArrayVar(&askOpts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
 	askCmd.Flags().BoolVarP(&askOpts.quiet, "quiet", "q", false,
 		i18n.T("静默 stderr：关闭心跳/耗时/转移提示（警告与错误保留）",
 			"quiet stderr: no heartbeat/elapsed/fallback chatter (warnings and errors kept)"))
@@ -147,6 +151,17 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	if askOpts.maxOutputTokens < 0 {
 		return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("--max-output-tokens 应为正整数", "--max-output-tokens must be a positive integer"))
+	}
+
+	// --extra-body / --extra-headers：通用透传口（保留字拒绝见 extras.go）
+	var extraBody map[string]any
+	var extraHeaders map[string]string
+	if len(askOpts.extraBody) > 0 || len(askOpts.extraHeaders) > 0 {
+		var exErr error
+		extraBody, extraHeaders, exErr = parseExtraFlags(askOpts.extraBody, askOpts.extraHeaders)
+		if exErr != nil {
+			return exitcode.Fail(stderr, exitcode.Usage, "%v", exErr)
+		}
 	}
 
 	// --json：无论成败（含配置/输入错误），stdout 恒定输出一个 JSON 对象。
@@ -256,6 +271,8 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 			Chain:           chain,
 			ReasoningEffort: askOpts.reasoningEffort,
 			MaxOutputTokens: askOpts.maxOutputTokens,
+			ExtraBody:       extraBody,
+			ExtraHeaders:    extraHeaders,
 			TextBytes:       textBytes,
 			Messages:        redactMessages(messages),
 		})
@@ -341,6 +358,8 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 				Messages:        messages,
 				ReasoningEffort: askOpts.reasoningEffort,
 				MaxTokens:       askOpts.maxOutputTokens,
+				ExtraBody:       extraBody,
+				ExtraHeaders:    extraHeaders,
 			}
 		},
 		onDelta)
@@ -419,6 +438,8 @@ type dryRunOut struct {
 	Chain           []string          `json:"chain"`
 	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
 	MaxOutputTokens int               `json:"max_output_tokens,omitempty"`
+	ExtraBody       map[string]any    `json:"extra_body,omitempty"`
+	ExtraHeaders    map[string]string `json:"extra_headers,omitempty"`
 	TextBytes       int64             `json:"text_bytes"`
 	Messages        []gateway.Message `json:"messages"`
 }
