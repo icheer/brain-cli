@@ -12,7 +12,8 @@
 | 协议 | OpenAI Chat Completions 兼容（`/v1/chat/completions` + `/v1/models`） |
 | 分发 | 公开 GitHub 仓库（源码 + 多平台二进制 Release）；darwin / linux / windows × amd64 / arm64 |
 | 密钥 | **不硬编码、不进仓库**。走配置文件 / 环境变量；`-ldflags` 仅注入版本号与 commit |
-| 模型清单 | 以网关 `/v1/models` 动态拉取为准 + 本地缓存；本地 `models.yaml` 只负责别名与场景标注 |
+| 模型清单 | 以网关 `/v1/models` 动态拉取为准 + 本地缓存；别名与场景标注在 config.yaml 的 aliases 段 |
+| 配置文件布局 | **单文件 config.yaml**（2026-10-26 由 config.yaml+models.yaml 合并，breaking）：含密钥与 aliases 段，整体 0600、永不提交——拆分买的是「可提交共享别名」，从未兑现而摩擦每天在付；共享走 models.example.yaml 复制粘贴，将来有真实团队需求可加回可选覆盖文件（增量不破坏）；`BRAIN_MODELS` 已删除 |
 | 会话状态 | v1 无状态，由调用方自行拼接上下文；`--session` 暂缓 |
 | 文件类型 | 文本文件 + 图片（本地路径 / URL）；PDF、音频明确排除，后续看情况 |
 | 流式 | 传输层始终 SSE（长连接可承载网关侧 keep-alive，防中间层掐断空闲连接）；**stderr 心跳是纯本地进度显示，不产生网络流量**；stdout 默认等完成一次性输出；`--stream` 增量打印供人肉交互（M2） |
@@ -20,7 +21,7 @@
 | 输出落盘 | 不做 `-o`；统一用 shell 重定向 `> file`（SKILL.md 写明该模式）；Windows 重定向编码出现真实用户反馈再考虑 |
 | `--json` 失败语义 | 无论成败，stdout 恒定输出**一个** JSON 对象（失败时填 `error` 字段），退出码照旧（M1 落地） |
 | 采样参数 | v1 不暴露也不默认传 `temperature` 等采样调优参数；**max_tokens 例外**（2026-10-25 第二轮双外脑评审收敛后修订）——`--max-output-tokens` 作为输出预算控制 opt-in 透传：防思维链吃满输出预算导致空正文、限制长输出费用；0=字段缺席 |
-| models.yaml 缺失 | 可选；缺失时 `-m` 直接按字面模型 ID 处理 |
+| aliases 段缺失 | 可选；缺失时 `-m` 直接按字面模型 ID 处理 |
 | fallback 范围 | 连接失败 / 超时 / 429 / 5xx / 404 可切换；401/403 不切（直接 exit 2）；已输出正文永不切 |
 | base_url 默认值 | 公开 release 不带默认值；缺失 → exit 7 引导 `brain config set`；内部定制走 ldflags 注入（同版本号机制） |
 | 换行约定 | stdout 正文末尾保证恰好一个 `\n`；`--json` 单行 JSON + `\n`（重定向产物即干净文件） |
@@ -45,15 +46,15 @@
 
 ## 2. 配置体系（公开分发后的核心）
 
-### 2.1 文件布局：个人配置与可共享清单分离
-- `config.yaml` — 个人配置，**含密钥**，权限 0600。
-- `models.yaml` — 可共享的别名/场景标注，**不含密钥**，可提交进仓库供团队复用。
+### 2.1 文件布局：单文件（2026-10-26 合并）
+- `config.yaml` — 个人配置 + 别名映射（aliases 段），**含密钥**，整体权限 0600、永不进仓库。
+  （原 models.yaml 并入；合并理由与可逆路径见第 0 节「配置文件布局」行）
 
 跨平台路径（用 `os.UserConfigDir()` 解析）：
 - Linux: `~/.config/brain/`
 - macOS: `~/Library/Application Support/brain/`
 - Windows: `%AppData%\brain\`
-- `BRAIN_CONFIG` / `BRAIN_MODELS` 环境变量可指定完整文件路径覆盖。
+- `BRAIN_CONFIG` 环境变量可指定完整文件路径覆盖。
 
 配置覆盖优先级：`CLI Flags > 环境变量（BRAIN_API_KEY / BRAIN_BASE_URL / BRAIN_TIMEOUT / BRAIN_DEFAULT_MODEL / BRAIN_USER_AGENT）> config.yaml > 代码内默认值`。
 （base_url 的默认值可编译注入——URL 非机密；密钥绝不注入；BRAIN_DEFAULT_MODEL 使 CI/容器可纯环境变量运行、零 config.yaml。）
@@ -62,15 +63,16 @@
 ```yaml
 base_url: https://gw.example.com/v1
 api_key: sk-xxxx
-default_model: fast          # 对应 models.yaml 中的别名
+default_model: fast          # 对应 aliases 段中的别名
 timeout_seconds: 300          # 兼容长推理模型
 max_input_bytes: 1048576      # 输入保护上限（1 MiB）
 retry_max: 2                  # 自动重试次数上限
 models_cache_ttl_seconds: 86400
 user_agent: ""                # 逃生口：个别网关校验 UA 取值时覆盖默认 brain/<version>；不伪装浏览器 UA
+# aliases 段见 2.3（可选）
 ```
 
-### 2.3 models.yaml 示例（别名 → 真实模型 + fallback 链 + 场景标注）
+### 2.3 config.yaml 的 aliases 段示例（别名 → 真实模型 + fallback 链 + 场景标注）
 ```yaml
 aliases:
   fast:
@@ -89,7 +91,7 @@ aliases:
 
 ### 2.4 配置管理命令与密钥安全
 - [x] `brain config path | get <key> | set <key> <value> | list | edit`
-- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）；可选交互生成 models.yaml 别名（拉 /v1/models 做选单，序号或完整 ID 均可，多个组成 fallback 链）——修复最小安装下 SKILL 模板别名 404 的冷启动断点（2026-10-25 外脑评审证实该断点）
+- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）；可选交互生成 aliases 段（拉 /v1/models 做选单，序号或完整 ID 均可，多个组成 fallback 链）——修复最小安装下 SKILL 模板别名 404 的冷启动断点（2026-10-25 外脑评审证实该断点）；覆盖重建时原有别名默认保留
 - [x] 密钥读取顺序：环境变量 > config.yaml；文件权限非 0600 时 stderr 警告
 - [x] 不提供 `--api-key` flag（避免进入 shell history / `ps` 输出；一次性使用走环境变量）
 
@@ -147,7 +149,7 @@ aliases:
 - [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
 ## 4. 模型解析与故障转移
-- [x] `-m` 解析顺序：models.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
+- [x] `-m` 解析顺序：config.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
 - [x] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级用缓存并 stderr 提示）
 - [x] Fallback 规则：仅在**尚未输出任何正文内容**前允许切换（一次性输出天然满足）；切换/重试均 stderr 提示；`--json` 的 model 字段记录最终使用的模型
 - [x] `brain ping`：自检连通性 / 鉴权 / 默认模型可用性（SKILL.md 引导 Agent 第一步先跑它）
@@ -171,7 +173,7 @@ aliases:
 - [x] 工程注意事项：宿主超时设置、按退出码决定重试还是换模型、用 `--json` 核对 usage
 - [x] 验证指引：外脑输出后的自检与落地流程
 - [x] 推理深度暗示：常见 5 档 low/medium/high/xhigh/max、智谱 GLM-5.3 仅 low/high/max 3 档；深度推演 `-e high`（更深可用 xhigh）、快问快答 `-e low`、不确定时先不设（各模型用自身默认）；`finish_reason=length` 空正文时 `-e low` 降档重试
-- [x] 别名冷启动指引：别名来自本机 models.yaml（`brain init` 可生成）；未配置时 `-m fast` 会按字面模型 ID 发出而 404，用 `brain models` 查 ID 直调
+- [x] 别名冷启动指引：别名来自本机 config.yaml 的 aliases 段（`brain init` 可生成）；未配置时 `-m fast` 会按字面模型 ID 发出而 404，用 `brain models` 查 ID 直调
 - [ ] frontmatter description 的**触发命中率**在真实宿主（Claude Code + 至少一个其他宿主）实测：该触发时触发、不该触发时克制，并据此精简 description（2026-10-24 外脑评审新增：不同宿主消费 skill 的方式不同，密集描述的效果未知，这是产品成立的前提）
 
 ## 7. 里程碑
@@ -191,6 +193,9 @@ aliases:
 - **M4**：`--max-output-tokens` 输出预算透传、`BRAIN_DEFAULT_MODEL` 环境变量、文档补丁（ping --json probes 字段说明）
   - 状态（2026-10-25）：完成；来源：第二轮双外脑评审（fox/claude-fable-5-1 + max/minimax-m3.1-flash，均 `-e xhigh`）交叉裁定——`--max-output-tokens` 为两模型唯一收敛项，`BRAIN_DEFAULT_MODEL` 填环境变量全量配置缺口
   - 评审记录：`--retry-on-empty`（空正文自动降档重试）与 `--max-output-tokens` 部分重叠且静默翻倍耗时，缓办；`-m m1,m2` 内联链 backlog；minimax 的 timeout/重试/SIGINT 全套与 fable 的 ping -m --json「缺口」均为**已实现功能的幻觉**（后者根源是 probes 字段未文档化，已补）——外脑无代码访问权时的过高幻觉率再次证明交叉核对不可省
+- **M5**：配置单文件化（config.yaml + models.yaml 合并，breaking）
+  - 状态（2026-10-26）：完成——`BRAIN_MODELS` 删除、别名进 config.yaml aliases 段（omitempty，无该段行为不变）、`init` 单文件向导且覆盖重建默认保留别名、`config path` 单行输出；决策记录见第 0 节「配置文件布局」行
+  - 用户侧迁移（仅本机一户）：把旧 models.yaml 的 aliases 段并入 config.yaml 后删除前者
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 的 secrets 待配置
 
@@ -199,3 +204,4 @@ aliases:
 2. Windows 真机测试环境来源
 
 > 2026-10-24 已拍板并移入第 0 节：base_url 默认值（公开 release 不带）、fallback 触发范围、输出不做 `-o`、`--json` 失败语义、采样参数不透传、models.yaml 可选、工程骨架选型。
+> 2026-10-26 已拍板并移入第 0 节：配置文件布局合并（单文件 config.yaml，原「models.yaml 可选」随之更名「aliases 段缺失」）。

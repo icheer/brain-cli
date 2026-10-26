@@ -1,11 +1,11 @@
-# brain 模型别名示例（不含密钥，可共享）
+# brain 模型别名示例（不含密钥，可共享；本文件仅作参考，不参与运行）
 #
-# 用法：复制到 `brain config path` 显示的 models 位置并按需修改。
+# 用法：把 aliases: 段复制进 config.yaml（2026-10-26 起别名与个人配置同文件）并按需修改。
 # models 列表前者为主，故障自动切换后者（M1 起生效）；
 # use 为场景标注，供 `brain models` 展示与 SKILL.md 描述参考。
 #
 # 注意：网关 /v1/models 列出的模型未必都对本 key 可用（401/403/404），
-# 配置前建议逐个实测：brain ask -m <model-id> "只回复两个字母: OK"
+# 配置前建议逐个实测：brain ask -m <model-id> "只回复两个字母: OK"（或 brain ping -m <别名> 逐链探测）
 aliases:
   fast:
     models: [anti/gemini-3.8-flash, claude-haiku-5-5]

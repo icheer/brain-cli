@@ -35,7 +35,7 @@ go install github.com/icheer/brain-cli@latest   # 开发者
 brain init                                            # 交互向导，或下面三行：
 brain config set base_url https://api.openai.com/v1   # 任意 OpenAI 兼容服务
 brain config set api_key sk-xxxx
-brain config set default_model gpt-5.6                # 可选；别名映射参考 models.example.yaml
+brain config set default_model gpt-5.6                # 可选；别名可写进 config.yaml 的 aliases 段（示例见 models.example.yaml）
 
 # 第一问
 brain ping
@@ -62,7 +62,7 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 
 ## 状态与路线
 
-**:rocket: v0.4.0 已发布**（M0–M4）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.5.0 已发布**（M0–M5）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -71,3 +71,4 @@ brain ask -m fast "用一句话介绍你自己"   # -m 也可直接用模型 ID�
 | M2 | `--stream` / `--show-thinking` / `brain init` | ✅ 完成（Homebrew 待建 tap 仓库） |
 | M3 | `-e` 推理深度透传 / `--json` 错误扩展（type/retryable/upstream_status/attempted_models）/ `--quiet` / `--dry-run` / `ping -m` 链探测 / `init` 别名生成 | ✅ 完成 |
 | M4 | `--max-output-tokens` 输出预算透传 / `BRAIN_DEFAULT_MODEL` 环境变量 | ✅ 完成 |
+| M5 | 配置单文件化：config.yaml + models.yaml 合并（breaking——别名进 aliases 段，`BRAIN_MODELS` 删除） | ✅ 完成 |

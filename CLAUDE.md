@@ -7,12 +7,12 @@
 ## 开发上下文入口
 
 - **先读 [DESIGN.md](DESIGN.md) 第 0 节「已定决策」**——两轮设计评审敲定的结论，不要重新讨论已定项
-- 当前状态：**v0.3.0 已发布（M0–M3）**；**M4 代码完成待发版**（`--max-output-tokens` 输出预算透传、`BRAIN_DEFAULT_MODEL` 环境变量）；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
+- 当前状态：**v0.4.0 已发布（M0–M4）**；**配置单文件化完成待发版**（config.yaml+models.yaml 合并为单文件，breaking：`BRAIN_MODELS` 已删除，别名在 config.yaml 的 aliases 段）；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
 - 架构、配置文件格式、退出码表、超时重试策略等规范全部在 DESIGN.md 内，以它为准
 
 ## 铁律
 
-- **任何密钥不得进入仓库**：`config.yaml` 含 `api_key`，已在 .gitignore 中，永不提交；`models.yaml` 可提交（不含密钥）
+- **任何密钥不得进入仓库**：config.yaml 含 api_key 与别名（aliases 段），已在 .gitignore 中，整体 0600、永不提交
 - stdout 只输出模型正文；警告/心跳/耗时走 stderr（详见 DESIGN.md 3.2）
 - 修改行为规范前，先确认没有违背 DESIGN.md 第 0 节的已定决策；若要推翻某条决策，先更新第 0 节表格
 

@@ -24,7 +24,7 @@ brain ping -m reason   # 可选：逐模型探测别名链实际可用性（/v1/
 
 stdout 逐行输出 OK；按 exit code 处理失败（7=配置缺失，按 stderr 提示修复）。
 
-注意：`-m` 别名来自本机 models.yaml（`brain init` 可生成）。未配置时 `-m fast` 等会按字面模型 ID 发出而 404——用 `brain models` 查看可用模型，改用模型 ID 直调。
+注意：`-m` 别名来自本机 config.yaml 的 aliases 段（`brain init` 可生成）。未配置时 `-m fast` 等会按字面模型 ID 发出而 404——用 `brain models` 查看可用模型，改用模型 ID 直调。
 
 ## 何时调用
 
