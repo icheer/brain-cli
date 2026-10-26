@@ -4,7 +4,7 @@
 
 > 仓库名 `brain-cli`，二进制命令名为 **`brain`**。
 
-`brain` 是一个给宿主 Agent（Claude Code、Gemini CLI 等）当"外脑"的极简命令行工具：通过 OpenAI Chat Completions 兼容协议调用大模型网关，负责一次高质量的咨询/分析调用，把结果干净地交还给 Agent。同一个模型复核自己的结论，检不出自己的系统性偏差——brain 把跨厂商的异构模型作为独立第二意见接入宿主。
+`brain` 是一个给宿主 Agent（Claude Code、Codex、DeepSeek Harness 等）当"外脑"的极简命令行工具：通过 OpenAI Chat Completions 兼容协议调用大模型网关，负责一次高质量的咨询/分析调用，把结果干净地交还给 Agent。同一个模型复核自己的结论，检不出自己的系统性偏差——brain 把跨厂商的异构模型作为独立第二意见接入宿主。
 
 ## 核心特性
 

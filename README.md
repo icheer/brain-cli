@@ -4,7 +4,7 @@
 
 > The repo is named `brain-cli`; the binary command is **`brain`**.
 
-`brain` is a minimalist CLI that acts as a "side brain" for host agents (Claude Code, Gemini CLI, etc.): it calls an LLM gateway via the OpenAI Chat Completions compatible protocol, performs one high-quality advisory/analysis call, and hands the result back to the agent cleanly. The same model reviewing its own conclusions cannot catch its own systematic bias — brain plugs in heterogeneous cross-vendor models as an independent second opinion.
+`brain` is a minimalist CLI that acts as a "side brain" for host agents (Claude Code, Codex, DeepSeek Harness, etc.): it calls an LLM gateway via the OpenAI Chat Completions compatible protocol, performs one high-quality advisory/analysis call, and hands the result back to the agent cleanly. The same model reviewing its own conclusions cannot catch its own systematic bias — brain plugs in heterogeneous cross-vendor models as an independent second opinion.
 
 ## Highlights
 
