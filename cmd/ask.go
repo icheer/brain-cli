@@ -106,16 +106,16 @@ const heartbeatInterval = 15 * time.Second
 
 // askJSON 是 --json 的输出结构（DESIGN.md 3.2：成败恒定一个对象，Agent 可无条件 jq）。
 type askJSON struct {
-	Content          string         `json:"content"`
-	Thinking         string         `json:"thinking,omitempty"`
-	Model            string         `json:"model"`
-	Requested        string         `json:"requested_model"`
-	ReasoningEffort  string         `json:"reasoning_effort,omitempty"`
-	MaxOutputTokens  int            `json:"max_output_tokens,omitempty"`
-	Usage            *gateway.Usage `json:"usage"`
-	LatencyMs        int64          `json:"latency_ms"`
-	FinishReason     string         `json:"finish_reason"`
-	Error            *askJSONError  `json:"error"`
+	Content         string         `json:"content"`
+	Thinking        string         `json:"thinking,omitempty"`
+	Model           string         `json:"model"`
+	Requested       string         `json:"requested_model"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens int            `json:"max_output_tokens,omitempty"`
+	Usage           *gateway.Usage `json:"usage"`
+	LatencyMs       int64          `json:"latency_ms"`
+	FinishReason    string         `json:"finish_reason"`
+	Error           *askJSONError  `json:"error"`
 }
 
 // askJSONError 扩展字段（第 0 节：纯增量，code/message 语义不变）：
@@ -237,7 +237,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
 
-	text, err := app.Assemble(args, askOpts.files, stdin, stdinPiped, cfg.MaxInputBytes)
+	messages, textBytes, err := assembleMessages(args, askOpts.files, askOpts.images, askOpts.system, cfg.MaxInputBytes)
 	if err != nil {
 		var tl *app.TooLargeError
 		if errors.As(err, &tl) {
@@ -249,32 +249,6 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
 
-	// 图片（-i）同样是合法输入：纯图咨询（如 vision 别名）不需要文本
-	if text == "" && len(askOpts.images) == 0 {
-		return exitcode.Fail(stderr, exitcode.Usage, "%s",
-			i18n.T("没有输入内容：需要位置参数、-f 文件、管道 stdin 或 -i 图片至少其一",
-				"no input: provide at least one of positional args, -f files, piped stdin, or -i images"))
-	}
-
-	// 图片块排在文本块之后（DESIGN.md 3.1）；纯图时无文本块
-	parts := make([]gateway.ContentPart, 0, 1+len(askOpts.images))
-	if text != "" {
-		parts = append(parts, gateway.ContentPart{Type: "text", Text: text})
-	}
-	for _, spec := range askOpts.images {
-		u, err := app.PrepareImage(spec)
-		if err != nil {
-			return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-		}
-		parts = append(parts, gateway.ContentPart{Type: "image_url", ImageURL: &gateway.ImageURL{URL: u}})
-	}
-
-	messages := make([]gateway.Message, 0, 2)
-	if sys := strings.Join(askOpts.system, "\n\n"); sys != "" {
-		messages = append(messages, gateway.Message{Role: "system", Content: sys})
-	}
-	messages = append(messages, gateway.Message{Role: "user", Content: parts})
-
 	// --dry-run：输出组装结果（请求形状），不发起网络请求（本地图片 data URL 截断展示）
 	if askOpts.dryRun {
 		out, _ := json.Marshal(dryRunOut{
@@ -282,7 +256,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 			Chain:           chain,
 			ReasoningEffort: askOpts.reasoningEffort,
 			MaxOutputTokens: askOpts.maxOutputTokens,
-			TextBytes:       int64(len(text)),
+			TextBytes:       textBytes,
 			Messages:        redactMessages(messages),
 		})
 		fmt.Fprintln(stdout, string(out))

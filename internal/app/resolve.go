@@ -20,6 +20,40 @@ func ModelChain(name string, aliases map[string]config.Alias) ([]string, error) 
 	return []string{name}, nil
 }
 
+// CompareModels 把 compare 的 -m 值列表展开为并行采样组（第 0 节「多模型编排」）：
+// 别名 → 其全部模型（模型组快捷方式，与 ask 的链首位+容灾语义不同）；
+// 字面 ID → 自身；每个值还支持逗号分隔；跨来源去重、保持首次出现顺序。
+func CompareModels(names []string, aliases map[string]config.Alias) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	add := func(m string) {
+		if m == "" || seen[m] {
+			return
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	for _, name := range names {
+		for _, n := range strings.Split(name, ",") {
+			n = strings.TrimSpace(n)
+			if n == "" {
+				continue
+			}
+			if a, ok := aliases[n]; ok {
+				if len(a.Models) == 0 {
+					return nil, &InputError{Msg: i18n.Tf("config.yaml 别名 %q 的 models 列表为空", "alias %q in config.yaml has an empty models list", n)}
+				}
+				for _, m := range a.Models {
+					add(m)
+				}
+				continue
+			}
+			add(n)
+		}
+	}
+	return out, nil
+}
+
 // ResolveModel 解析链首位（DESIGN.md 第 4 节：别名 → 字面模型 ID，ID 交网关裁决）。
 func ResolveModel(name string, aliases map[string]config.Alias) (string, error) {
 	chain, err := ModelChain(name, aliases)

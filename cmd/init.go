@@ -150,7 +150,9 @@ var aliasDefs = []struct {
 	{"fast", func() string { return i18n.T("快速问答、简单总结", "quick Q&A, light summarization") }},
 	{"reason", func() string { return i18n.T("复杂推理、方案交叉验证", "hard reasoning, cross-checking") }},
 	{"coding", func() string { return i18n.T("代码审查、重构建议", "code review, refactoring advice") }},
-	{"vision", func() string { return i18n.T("图表/截图解析（需多模态模型）", "charts/screenshots (needs a multimodal model)") }},
+	{"vision", func() string {
+		return i18n.T("图表/截图解析（需多模态模型）", "charts/screenshots (needs a multimodal model)")
+	}},
 }
 
 // initAliases 交互生成别名段（写入 cfg.Aliases，由调用方统一 Save）：

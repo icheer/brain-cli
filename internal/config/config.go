@@ -19,15 +19,15 @@ import (
 
 // Config 与 DESIGN.md 2.2 的 config.yaml 一一对应；aliases 段可选（缺省 -m 按字面模型 ID 处理）。
 type Config struct {
-	BaseURL               string            `yaml:"base_url"`
-	APIKey                string            `yaml:"api_key"`
-	DefaultModel          string            `yaml:"default_model"`
-	TimeoutSeconds        int               `yaml:"timeout_seconds"`
-	MaxInputBytes         int64             `yaml:"max_input_bytes"`
-	RetryMax              int               `yaml:"retry_max"`
-	ModelsCacheTTLSeconds int               `yaml:"models_cache_ttl_seconds"`
-	UserAgent             string            `yaml:"user_agent"` // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
-	Aliases               map[string]Alias  `yaml:"aliases,omitempty"` // 别名 → fallback 链 + 场景标注（DESIGN.md 2.3）
+	BaseURL               string           `yaml:"base_url"`
+	APIKey                string           `yaml:"api_key"`
+	DefaultModel          string           `yaml:"default_model"`
+	TimeoutSeconds        int              `yaml:"timeout_seconds"`
+	MaxInputBytes         int64            `yaml:"max_input_bytes"`
+	RetryMax              int              `yaml:"retry_max"`
+	ModelsCacheTTLSeconds int              `yaml:"models_cache_ttl_seconds"`
+	UserAgent             string           `yaml:"user_agent"`        // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
+	Aliases               map[string]Alias `yaml:"aliases,omitempty"` // 别名 → fallback 链 + 场景标注（DESIGN.md 2.3）
 }
 
 // Default 返回代码内默认值（优先级最低）。

@@ -17,7 +17,7 @@ import (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config",
+	Use: "config",
 	Short: i18n.T("查看/修改个人配置（config.yaml，含密钥，0600）",
 		"view/edit personal config (config.yaml; contains the key, 0600)"),
 	Long: i18n.T(`管理 config.yaml（个人配置，含密钥，永不进仓库）：

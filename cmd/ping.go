@@ -27,7 +27,7 @@ type pingOptions struct {
 var pingOpts pingOptions
 
 var pingCmd = &cobra.Command{
-	Use:   "ping [-m model] [--timeout 秒] [--json]",
+	Use: "ping [-m model] [--timeout 秒] [--json]",
 	Short: i18n.T("自检连通性 / 鉴权 / 模型清单（-m 时逐模型探测别名链）",
 		"self-check connectivity / auth / model list (with -m, probe each model in the chain)"),
 	Long: i18n.T(`快速自检（SKILL.md 引导 Agent 首次使用 brain 前先跑它）：

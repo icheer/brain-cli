@@ -44,6 +44,32 @@ func TestModelChain(t *testing.T) {
 	}
 }
 
+func TestCompareModels(t *testing.T) {
+	aliases := map[string]config.Alias{
+		"fast":  {Models: []string{"m-a", "m-b"}},
+		"empty": {},
+	}
+	// 别名=模型组快捷方式：整组展开
+	got, err := CompareModels([]string{"fast"}, aliases)
+	if err != nil || len(got) != 2 || got[0] != "m-a" || got[1] != "m-b" {
+		t.Fatalf("别名应展开为整组: %v, %v", got, err)
+	}
+	// 逗号分隔 + 混用 + 跨来源去重保序
+	got, err = CompareModels([]string{"m-b,fast", "m-c", "m-a"}, aliases)
+	if err != nil || len(got) != 3 || got[0] != "m-b" || got[1] != "m-a" || got[2] != "m-c" {
+		t.Fatalf("逗号/混用/去重保序不符: %v, %v", got, err)
+	}
+	// 空值与空白项跳过
+	got, err = CompareModels([]string{"m-a,", " ,m-b"}, aliases)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("空项应跳过: %v, %v", got, err)
+	}
+	// 空别名报错
+	if _, err = CompareModels([]string{"empty"}, aliases); err == nil {
+		t.Fatal("空 models 列表应报错")
+	}
+}
+
 func TestSuggest(t *testing.T) {
 	aliases := map[string]config.Alias{
 		"fast":   {Models: []string{"m1"}},

@@ -24,7 +24,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "brain",
+	Use: "brain",
 	Short: i18n.T("大模型网关外脑：给宿主 Agent 的一次干净利落的咨询调用",
 		"LLM gateway side-brain: one clean advisory call for host agents"),
 	Long: i18n.T(`brain 通过 OpenAI Chat Completions 兼容协议调用大模型网关。
@@ -58,7 +58,7 @@ var (
 
 func init() {
 	rootCmd.SetVersionTemplate("brain " + version + " (commit " + commit + ")\n")
-	rootCmd.AddCommand(askCmd, modelsCmd, configCmd)
+	rootCmd.AddCommand(askCmd, compareCmd, modelsCmd, configCmd)
 }
 
 func Execute() {

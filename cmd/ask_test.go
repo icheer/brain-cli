@@ -83,6 +83,7 @@ func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	}
 	// cobra 复用同一命令对象，重置上次测试残留的 flag 值
 	askOpts = askOptions{}
+	compareOpts = compareOptions{}
 	modelsOpts = modelsOptions{}
 	pingOpts = pingOptions{}
 	initOpts = struct {
