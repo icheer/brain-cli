@@ -36,6 +36,7 @@
 **目标**
 - 给宿主 Agent 用的"外脑"：低摩擦、可脚本化、输出可解析、行为可预期。
 - 开箱即用：一次 `brain config set`（或 `brain init`）后立即可用。
+- 与宿主自带 subagent 机制**互补而非替代**：subagent = 同模型+工具+独立上下文（适合仓库级探索）；brain = 跨厂商模型+纯文本进出（适合独立第二意见，同源自我复核检不出系统性偏差）。对比表见 README「brain 与宿主 subagent 的区别」。
 
 **非目标（写入 README，防止范围蔓延）**
 - 不做 Function Calling，不替宿主 Agent 执行工具。
