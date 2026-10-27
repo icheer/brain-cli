@@ -1,0 +1,3 @@
+# 防 Windows autocrlf 把脚本转成 CRLF（bash 无法执行 CRLF 脚本）
+*.sh text eol=lf
+*.bash text eol=lf

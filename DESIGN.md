@@ -164,7 +164,7 @@ aliases:
 - [x] goreleaser 构建矩阵：darwin/amd64+arm64、linux/amd64+arm64、windows/amd64+arm64；`CGO_ENABLED=0` 静态编译 + `-s -w -trimpath`；产出 SHA256SUMS（全链路自 v0.1.0 起多版验证通过）
 - [x] GitHub Actions：打 tag 触发 release；CI 跑 `go test` + 6 目标交叉构建冒烟（真实网关 e2e 曾配 secret 落地，后因网关 IP 风控降级 continue-on-error，本地 `.env` 联调替代）
 - [x] `--version`：ldflags 注入 git tag / commit
-- [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）；v0.9.0 起支持安装模式——默认装技能目录 bin/、`--global` 复制进全局目录（不可写自动 sudo，`BRAIN_GLOBAL_BIN` 可改）、`--link` 技能目录安装+全局软链（单一二进制源，重装即全局升级；Windows Git Bash 软链不可靠退化为复制；全局写入先 rm 再写，防 cp 穿透既有软链）
+- [x] README：30 秒快速开始 + 一键安装脚本（`skills/brain/install.sh`，SHA256 校验）；v0.9.0 起支持安装模式——默认装技能目录 bin/、`--global` 复制进全局目录（不可写自动 sudo，`BRAIN_GLOBAL_BIN` 可改）、`--link` 技能目录安装+全局软链（单一二进制源，重装即全局升级；Windows Git Bash 软链不可靠退化为复制；全局写入先 rm 再写，防 cp 穿透既有软链）；Windows 原生适配（2026-10-27）：goreleaser windows 产物恒名 brain.exe（v0.10.0 实测确认），安装器解包/安装/校验/消息全程按平台带 `.exe` 后缀（否则 Git Bash 三种模式全部 `tar: brain: Not found in archive` 装不上）；Git Bash 下全局默认目录为 `~/bin`（`/usr/local` 位于 Git 安装目录通常不可写且 Windows 无 sudo，~/bin 存在时 Git Bash 自动加入 PATH）；目录创建/写入遇无 sudo 时优雅指引 `BRAIN_GLOBAL_BIN` 而非裸 127；`.gitattributes` 钉 `*.sh` LF（防 autocrlf 把脚本转 CRLF 后 bash 无法执行）
 - [ ] 可选：Homebrew tap（需先建 `icheer/homebrew-tap` 仓库，goreleaser 加 brew 配置即可）；`go install` 作为开发者备选
 - [x] SKILL.md 随仓库分发（`skills/brain/SKILL.md`），README 说明如何链接/复制进 `.claude/skills/` 或 `.agents/skills/`
 
@@ -225,7 +225,7 @@ aliases:
 
 ## 8. 开放问题
 1. **网关密钥发放**：若网关目前只有一把共享 key，公开分发前需先支持按用户发 key（网关侧配套工作，需确认可行性与时间点）
-2. Windows 真机测试环境来源
+2. Windows 真机测试环境来源。安装器层 Windows 适配已完成（2026-10-27）：MINGW/MSYS/CYGWIN 平台识别、brain.exe 全链路命名、Git Bash 全局默认 ~/bin、无 sudo 优雅指引、`.gitattributes` 钉 LF——均以伪造 `uname`/`curl` 的模拟环境五项验证通过（含真实 v0.10.0 windows 包的下载/校验/解包）；真机 Git Bash / arm64 Windows / Cygwin 验证仍待此条解决
 3. **图像生成（`brain draw`）暂缓**（2026-10-26）：构想与设计草案已收敛——定位扩展为「外脑 = 咨询 + 生成」（均为单次无状态调用，不违背「不做 Function Calling」）；基建复用约九成（别名链/退出码/`--json`/心跳/分发）；关键取舍：draw 不回退 default_model（chat 语义），无 `-m` 时找 `image` 别名再无则报错；stdout 输出图片字节（`brain draw "..." > cat.png`，URL 形态自动下载后输出、b64 解码）；n=1 固定单张；`--size` 等 opt-in 纯透传。暂缓原因：实测本网关 new-api 对 `/v1/images/generations` 疑似把绘图请求转成聊天格式发给上游图像模型、上游 400（探测确认路由存在：503 model_not_found ≠ 404，但转换损坏只有实弹能暴露）——属网关侧问题，升级 new-api / 修正渠道路由后可重启
 4. **`brain council`（串行辩论原语）已落地（2026-10-26，M9）**：决策移入第 0 节「串行辩论（council）」行；原三担忧的对策内化——成本超线性→混合拓扑 + C 默认 2 + 成本公式入 help/SKILL；序位效应→首轮盲评 + 蛇形轮换 + 不设指定总结者；中途失败→缺席退出 + 沉没成本保护。缓办项见第 6 条
 5. **alias 角色预设（system/`-e`/max_tokens 绑进别名段）拒绝**（2026-10-26）：同一模型在不同场景下的预设是多变的，预设系统提示词没有稳定复用价值——`-s` 的临时性即正确形态（第三轮双外脑评审 Opus personas 独立段 / Gemini P2 角色钢印两个形态均被用户否决）。若未来出现真实复用需求再议

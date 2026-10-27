@@ -16,6 +16,8 @@ bash "$(dirname "$SKILL_DIR")/install.sh"   # 或仓库 skills/brain/install.sh
 # 人类终端场景可加：--link（技能目录安装+全局软链，重装即全局升级）或 --global（仅全局安装）
 ```
 
+Windows 宿主在 Git Bash（Claude Code 的 Windows shell 自带）或 WSL 下运行同一脚本；安装器按平台自动装 `brain.exe`（Git Bash 下全局默认 `~/bin`）。
+
 ## 第 1 步：自检
 
 ```bash
