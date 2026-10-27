@@ -469,7 +469,7 @@ func runCompare(cmd *cobra.Command, args []string) (retErr error) {
 				continue // 失败腿不出现在 stdout（stderr/--json 已明示）
 			}
 			if !first {
-				fmt.Fprint(stdout, "\n")
+				fmt.Fprint(stdout, "\n\n") // 分隔头前留两个空行，人类阅读更清晰
 			}
 			first = false
 			fmt.Fprintf(stdout, "===== model: %s =====\n", display(l.Model))

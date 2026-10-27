@@ -700,7 +700,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 				continue // 缺席不出现在 stdout（stderr/--json/记录内标记已明示）
 			}
 			if !first {
-				fmt.Fprint(stdout, "\n")
+				fmt.Fprint(stdout, "\n\n") // 分隔头前留两个空行，人类阅读更清晰
 			}
 			first = false
 			fmt.Fprintf(stdout, "===== model: %s | round %d =====\n", sp.Model, sp.Round)

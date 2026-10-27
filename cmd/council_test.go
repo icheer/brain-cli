@@ -70,9 +70,9 @@ func TestCouncilStdoutSections(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
-	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n" +
-		"===== model: m-b | round 1 =====\nreply:m-b\n\n" +
-		"===== model: m-b | round 2 =====\nreply:m-b\n\n" +
+	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n\n" +
+		"===== model: m-b | round 1 =====\nreply:m-b\n\n\n" +
+		"===== model: m-b | round 2 =====\nreply:m-b\n\n\n" +
 		"===== model: m-a | round 2 =====\nreply:m-a\n"
 	if out != want {
 		t.Fatalf("stdout 逐字节不符:\n got %q\nwant %q", out, want)
@@ -117,11 +117,11 @@ func TestCouncilThreeRounds(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
-	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n" +
-		"===== model: m-b | round 1 =====\nreply:m-b\n\n" +
-		"===== model: m-b | round 2 =====\nreply:m-b\n\n" +
-		"===== model: m-a | round 2 =====\nreply:m-a\n\n" +
-		"===== model: m-a | round 3 =====\nreply:m-a\n\n" +
+	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n\n" +
+		"===== model: m-b | round 1 =====\nreply:m-b\n\n\n" +
+		"===== model: m-b | round 2 =====\nreply:m-b\n\n\n" +
+		"===== model: m-a | round 2 =====\nreply:m-a\n\n\n" +
+		"===== model: m-a | round 3 =====\nreply:m-a\n\n\n" +
 		"===== model: m-b | round 3 =====\nreply:m-b\n"
 	if out != want {
 		t.Fatalf("stdout 逐字节不符:\n got %q\nwant %q", out, want)
@@ -243,8 +243,8 @@ func TestCouncilRound2Dropout(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
-	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n" +
-		"===== model: m-b | round 1 =====\nreply:m-b\n\n" +
+	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n\n" +
+		"===== model: m-b | round 1 =====\nreply:m-b\n\n\n" +
 		"===== model: m-a | round 2 =====\nreply:m-a\n"
 	if out != want {
 		t.Fatalf("stdout 逐字节不符:\n got %q\nwant %q", out, want)

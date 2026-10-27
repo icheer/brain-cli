@@ -70,7 +70,7 @@ func TestCompareStdoutSections(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
-	want := "===== model: m-a =====\nreply:m-a\n\n===== model: m-b =====\nreply:m-b\n"
+	want := "===== model: m-a =====\nreply:m-a\n\n\n===== model: m-b =====\nreply:m-b\n"
 	if out != want {
 		t.Fatalf("stdout 逐字节不符:\n got %q\nwant %q", out, want)
 	}
