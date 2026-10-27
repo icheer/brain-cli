@@ -2,9 +2,9 @@
 package app
 
 import (
-	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -26,30 +26,59 @@ func (e *TooLargeError) Error() string {
 	return i18n.Tf("输入 %d 字节超过上限 %d 字节", "input of %d bytes exceeds limit of %d bytes", e.Size, e.Limit)
 }
 
-// Assemble 按「位置参数 → -f（按出现顺序）→ stdin（若有）」装配正文文本，
-// 多文件以分隔头标记（DESIGN.md 3.1）。limit 为装配后文本的字节上限。
-// 全部来源为空时返回空串且不报错——图片（-i）同样是合法输入，
-// 「完全无输入」的判断由调用方结合图片来源进行。
+// Assemble 按「位置参数 → -f（按出现顺序）→ stdin（若有）」装配正文文本（DESIGN.md 3.1）。
+// 多来源 XML 区隔（2026-10-27）：附件恒以 <attachment path="..."> 包裹（路径元数据
+// 即使单文件也有价值）；位置参数与 stdin 仅在与其它文本块共存时才包裹
+// <user_message>/<stdin>——单一来源裸发保持原样（高频纯问答路径零变化）。
+// 标签是语言中立的恒定契约，不参与 i18n；内容不转义，靠结构标签名与内容自然区分。
+// limit 为装配后文本的字节上限。
 func Assemble(args []string, files []string, stdin io.Reader, piped bool, limit int64) (string, error) {
-	parts := make([]string, 0, len(args)+len(files)+1)
+	var question, pipedText string
+	type attachment struct{ path, content string }
+	var attachments []attachment
 
 	if len(args) > 0 {
-		parts = append(parts, strings.Join(args, "\n\n"))
+		question = strings.Join(args, "\n\n")
 	}
-
 	for _, f := range files {
 		content, err := readTextFile(f, limit)
 		if err != nil {
 			return "", err
 		}
-		parts = append(parts, fmt.Sprintf("----- file: %s -----\n%s", f, content))
+		attachments = append(attachments, attachment{f, content})
 	}
-
 	if piped && stdin != nil {
 		// 读到 limit+1 即止，避免恶意管道把内存读爆；最终统一由大小检查裁决
 		data, _ := io.ReadAll(io.LimitReader(stdin, limit+1))
 		if len(data) > 0 {
-			parts = append(parts, string(data))
+			pipedText = string(data)
+		}
+	}
+
+	blocks := len(attachments)
+	if question != "" {
+		blocks++
+	}
+	if pipedText != "" {
+		blocks++
+	}
+
+	var parts []string
+	if question != "" {
+		if blocks >= 2 {
+			parts = append(parts, "<user_message>\n"+question+"\n</user_message>")
+		} else {
+			parts = append(parts, question)
+		}
+	}
+	for _, a := range attachments {
+		parts = append(parts, "<attachment path="+strconv.Quote(a.path)+">\n"+a.content+"\n</attachment>")
+	}
+	if pipedText != "" {
+		if blocks >= 2 {
+			parts = append(parts, "<stdin>\n"+pipedText+"\n</stdin>")
+		} else {
+			parts = append(parts, pipedText)
 		}
 	}
 

@@ -134,7 +134,7 @@ func TestAskDryRun(t *testing.T) {
 	for _, want := range []string{
 		`"chain":["m-a","m-b"]`,
 		"你是审查员",
-		"----- file:",
+		"attachment path=",
 		"data:image/png;base64",
 		"省略",
 	} {

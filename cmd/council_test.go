@@ -95,8 +95,8 @@ func TestCouncilStdoutSections(t *testing.T) {
 		if !strings.Contains(req.Body, "这是第 2/2 轮") {
 			t.Fatal("应识别为第 2 轮指令")
 		}
-		if !strings.Contains(req.Body, "----- 席位 m-a（第 1 轮）-----") ||
-			!strings.Contains(req.Body, "----- 席位 m-b（第 1 轮）-----") {
+		if !strings.Contains(req.Body, `speech seat=\"m-a\" round=\"1\"`) ||
+			!strings.Contains(req.Body, `speech seat=\"m-b\" round=\"1\"`) {
 			t.Fatalf("第 2 轮请求应携带完整第 1 轮发言记录: %s", req.Body)
 		}
 		if !strings.Contains(req.Body, "最后一轮") {
@@ -152,9 +152,9 @@ func TestCouncilThreeRounds(t *testing.T) {
 	if aR3 == "" {
 		t.Fatal("未找到 m-a 第 3 轮请求")
 	}
-	iB2 := strings.Index(aR3, "----- 席位 m-b（第 2 轮）-----")
-	iA2 := strings.Index(aR3, "----- 席位 m-a（第 2 轮）-----")
-	iA1 := strings.Index(aR3, "----- 席位 m-a（第 1 轮）-----")
+	iB2 := strings.Index(aR3, `speech seat=\"m-b\" round=\"2\"`)
+	iA2 := strings.Index(aR3, `speech seat=\"m-a\" round=\"2\"`)
+	iA1 := strings.Index(aR3, `speech seat=\"m-a\" round=\"1\"`)
 	if iA1 < 0 || iB2 < 0 || iA2 < 0 || !(iA1 < iB2 && iB2 < iA2) {
 		t.Fatalf("发言记录应按时间序追加: iA1=%d iB2=%d iA2=%d", iA1, iB2, iA2)
 	}
@@ -254,7 +254,7 @@ func TestCouncilRound2Dropout(t *testing.T) {
 	}
 	// 蛇形序 m-b 先行：其失败发生在 m-a 发言前，m-a 的第 2 轮请求应见缺席标记
 	last := (*seen)[len(*seen)-1]
-	if last.Model != "m-a" || !strings.Contains(last.Body, "缺席退出") {
+	if last.Model != "m-a" || !strings.Contains(last.Body, `status=\"absent\"`) {
 		t.Fatalf("m-a 第 2 轮请求应含 m-b 缺席标记: model=%s", last.Model)
 	}
 }

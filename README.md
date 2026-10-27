@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **Agent-friendly**: stdout carries only the model reply; metadata/warnings/heartbeat all go to stderr. Pipes / `-f` multi-file / `-i` image multimodal input work out of the box
+- **Agent-friendly**: stdout carries only the model reply; metadata/warnings/heartbeat all go to stderr. Pipes / `-f` multi-file / `-i` image multimodal input work out of the box; multi-source inputs are wrapped in XML-style tags (`<user_message>`/`<attachment>`/`<stdin>`) for unambiguous context separation
 - **Model alias routing**: `fast` / `reason` / `coding` / `vision` aliases plus automatic failover (retry with backoff, switch along the chain, noted on stderr) — agents never memorize model names
 - **Parallel cross-examination**: `brain compare -m a,b -m reason` sends the same question to several models at once; replies concatenated under `===== model: X =====` headers (`--json` gives `responses[]`). In compare, an alias is a model-group shortcut and each leg does no failover; `--blind` prints anonymous Model_A/B to guard the adjudicator against brand bias
 - **Serial debate `brain council`**: N models discuss one topic over rounds — round 1 goes out blind-parallel (kills first-speaker anchoring), later rounds are snake-serial with a growing transcript so later speakers critique earlier ones; the final round states each seat's position, what changed, and unresolved disagreements. Lenses/stances need no syntax: a seat-to-lens table written into the context *is* the protocol. Seats retry same-model only (a mid-council model swap would be identity fraud); absences are marked, and paid-for speeches survive early termination or SIGINT

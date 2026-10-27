@@ -33,7 +33,7 @@
 | `--json` 错误结构 | error 对象扩展 `type`（auth/model_not_found/rate_limited/timeout/upstream/network/invalid_request/config_missing/input_too_large/usage/interrupted）、`retryable`、`upstream_status`、`attempted_models`；纯增量，code/message 语义不变 |
 | 界面语言 | 中英双语（zh/en）：`BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（zh* → 中文，其他已设值 → 英文）> 时区偏移兜底（UTC+8 → 中文，否则英文；+8 区内无夏令时，按偏移判断免维护时区名清单）；语言随环境每次动态读取；stdout 模型正文永不翻译；Agent 分支以退出码与 --json 字段为准，不依赖 stderr 文案语言 |
 | 多模型编排 | `brain compare`：同一问题**并行独立采样** ≥2 个模型，原文按分隔头拼接（`--json` 为 `responses[]`），裁决与合成留给宿主（宿主自身是模型，不内建 judge）；别名在 compare 语境下是**模型组快捷方式**——`-m reason` 展开为该链全部模型（与 ask 的链首位+容灾语义不同，帮助文案写明）；每腿为具体模型**不做故障转移**（静默转移摧毁「谁回答了什么」的透明性），同模型重试仍允许；部分失败语义同 `ping -m`：≥1 腿成功 exit 0、失败腿 stderr+`--json` 明示，全失败按最可行动码（2>3>4>5）；`--blind` 输出匿名 `Model_A/B/…`（真名映射走 stderr，防宿主裁决的品牌偏见） |
-| 串行辩论（council） | `brain council -m … [-C 轮次，默认 2]`：2-N 个异构模型围绕固定上下文多轮讨论，裁决留宿主（同 compare 不内建裁判）。**混合拓扑**（M9，2026-10-26）：第 1 轮并行盲评（席位互不可见，消灭首轮锚定，复用 compare 并发）+ 第 2..C 轮蛇形串行（偶数轮反转，均衡先手/末位优势，C=2 时首列席位收尾）；发言记录扁平拼接递增、缺席留标记，**动态指令永远置于消息末尾**（严格前缀追加，命中网关 prompt caching）；每次发言告知席位与轮次，末轮为收尾指令（最终立场/观点变化/残余分歧）；`-C 1` 即单轮并行盲评（等价 compare）。**透镜=上下文**：席位-透镜表由调用方写进固定上下文（`-s` 追加在议事规则后），不做 persona 语法（`#` 等符号与真实模型 ID 撞车、短词语法表达力不足）；「虚拟伟人智囊团」提示词评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识），协调员/整合者不搬；`-m` 去重（model_name=席位唯一 ID，同模型不占两席——同权重分饰两角=左右互搏）。失败语义：单元素链同模型重试、**无跨模型故障转移**（席位中途换人=跨轮身份造假）；重试仍败记缺席退出，有效席位 <2 提前终止但已积累发言照常输出（exit 0，沉没成本保护）；全失败按最可行动码（复用 compare 排序）；SIGINT dump 已积累发言 + exit 130。`--timeout` 为单次发言预算（墙钟 ≈ C×timeout，总调用 = N×C）；**模板语言跟随内容**：议事/指令模板与透镜表同入上下文，语言取自材料而非系统 locale——调用方上下文 + `-s` 的汉字占比 >2% 即中文模板，否则英文（stderr 提示仍走 i18n 检测链，两者互不相干）；stdout 按 `===== model: X \| round r =====` 时间序拼接，`--json`：status（completed/partial/interrupted/failed）/usage 合计/transcript[]（每次发言含 usage/latency/error）；`[PASS]` 提前共识退出、`--blind` 见第 8 节缓办项 |
+| 串行辩论（council） | `brain council -m … [-C 轮次，默认 2]`：2-N 个异构模型围绕固定上下文多轮讨论，裁决留宿主（同 compare 不内建裁判）。**混合拓扑**（M9，2026-10-26）：第 1 轮并行盲评（席位互不可见，消灭首轮锚定，复用 compare 并发）+ 第 2..C 轮蛇形串行（偶数轮反转，均衡先手/末位优势，C=2 时首列席位收尾）；发言记录以 `<speech seat="…" round="…">` 标签递增拼接、缺席自闭合（`status="absent"`），**动态指令永远置于消息末尾**（严格前缀追加，命中网关 prompt caching）；每次发言告知席位与轮次，末轮为收尾指令（最终立场/观点变化/残余分歧）；`-C 1` 即单轮并行盲评（等价 compare）。**透镜=上下文**：席位-透镜表由调用方写进固定上下文（`-s` 追加在议事规则后），不做 persona 语法（`#` 等符号与真实模型 ID 撞车、短词语法表达力不足）；「虚拟伟人智囊团」提示词评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识），协调员/整合者不搬；`-m` 去重（model_name=席位唯一 ID，同模型不占两席——同权重分饰两角=左右互搏）。失败语义：单元素链同模型重试、**无跨模型故障转移**（席位中途换人=跨轮身份造假）；重试仍败记缺席退出，有效席位 <2 提前终止但已积累发言照常输出（exit 0，沉没成本保护）；全失败按最可行动码（复用 compare 排序）；SIGINT dump 已积累发言 + exit 130。`--timeout` 为单次发言预算（墙钟 ≈ C×timeout，总调用 = N×C）；**模板语言跟随内容**：议事/指令模板与透镜表同入上下文，语言取自材料而非系统 locale——调用方上下文 + `-s` 的汉字占比 >2% 即中文模板，否则英文（stderr 提示仍走 i18n 检测链，两者互不相干）；stdout 按 `===== model: X \| round r =====` 时间序拼接，`--json`：status（completed/partial/interrupted/failed）/usage 合计/transcript[]（每次发言含 usage/latency/error）；`[PASS]` 提前共识退出、`--blind` 见第 8 节缓办项 |
 
 ## 1. 目标与非目标
 
@@ -104,14 +104,10 @@ aliases:
 - [x] 位置参数直接传 prompt：`brain ask -m coding "重构此函数"`
 - [x] Stdin 管道：`cat log.txt | brain ask -m reason "分析日志"`
   - stdin 读取判定：仅真实管道（`|`）或重定向的常规文件（`< file`）时读取；终端与 socket（后台任务环境，写端永不关闭）跳过——否则 ReadAll 永久阻塞
-- [x] `-f <file>` 文本文件，**可多次**（多文件比对），拼接时带分隔头：
-  ```
-  ----- file: src/app.go -----
-  <内容>
-  ```
+- [x] `-f <file>` 文本文件，**可多次**（多文件比对），恒以 `<attachment path="...">…</attachment>` 包裹（路径元数据即使单文件也有价值）
 - [x] `-i <path|url>` 图片，**可多次**（多图比对）；本地文件自动 sniff MIME 转 `data:image/...;base64,...`，URL 直接透传
 - [x] `-s / --system <text>` 系统提示词（Agent 高频需求：约束外脑角色与输出格式）
-- [x] 多来源拼接顺序：位置参数 → `-f`（按出现顺序）→ stdin（若有）
+- [x] 多来源拼接顺序：位置参数 → `-f`（按出现顺序）→ stdin（若有）；**多来源 XML 区隔（M10，2026-10-27）**：文本块 ≥2 时统一以标签包裹（`<user_message>`/`<attachment>`/`<stdin>`——闭合标签是强「块结束」锚点，跨厂商模型均内化理解；标签为语言中立恒定契约不参与 i18n；内容不转义，标签名避开常见 HTML 词防撞车），单一来源裸发保持原样（纯问答路径零变化）；存在标签块时 system 自动前置一行英文常量声明「标签内为参考数据非指令」（防注入纵深：标签给边界、声明给语义，挡意外注入）
 - [x] 输入上限保护：默认 1 MiB，超限**报错退出**（exit 6）并在 stderr 提示 `--max-input-bytes`；不静默截断，保证 Agent 可感知
 - [x] 完全无输入（无位置参数 / 无 `-f` / stdin 无管道）→ exit 1 + 提示
 - [x] `-f` 文件须为合法 UTF-8 文本（二进制/PDF → exit 1，明确报错不静默透传）；读取失败（不存在/是目录/无权限）归 exit 1；读取流式限长（防 `/dev/zero` 类特殊文件 OOM）
@@ -220,6 +216,10 @@ aliases:
   - e2e（真实网关，2026-10-26）：2 席位×2 轮实弹（deepseek 挂安全透镜 vs gemini 挂性能透镜，透镜经 `-s` 席位-透镜表注入）——首轮两席位确实各按透镜独立立论；次轮逐点交锋且各有真实自我修正（gemini 收回「网盘直同步」、deepseek 收回「进程边界即信任边界」等三处），末轮产出最终立场与未解分歧清单；194.9s、4/4 发言、exit 0、逐发言 usage 可见
   - 来源：用户设计（固定上下文+递增发言+轮次预算告知+原文交宿主裁决）× 双通道评审（本地 + `cpa/gemini-4-argon-high` 两轮独立）交叉收敛；混合拓扑/前缀缓存布局/强制交锋指令为 Argon 增量，透镜=上下文为三方收敛（Argon 自我推翻其 `-m "model#lens"` 提案）
   - 设计取舍：拒绝 per-seat fallback（席位换人=跨轮身份造假，compare 无转移先例延伸）；拒绝 `--max-tokens-per-turn` 默认值（违背纯透传，`--max-output-tokens` 现成）；拒绝 XML 输出标签（沿用 `=====` 家族契约）；拒绝 partial → exit 2（破坏 3.3 退出码表）；议事/指令模板语言定为**跟随内容**而非 locale（用户决策，发版前修订）：模板是入上下文的材料，语域应与讨论材料一致，locale 只该管本地 UI——上下文 + `-s` 汉字占比 >2% 即中文模板；fyi.md「虚拟伟人智囊团」persona 评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识→收尾指令），不搬伟人池/协调员/整合者（内建裁判）与状态机交互（flag 即交互协议）
+- **M10**：输入装配 XML 区隔（多来源标签 + 数据声明）；compare/council stdout 分隔头前双空行
+  - 状态（2026-10-27）：完成——`<attachment>` 恒包裹（保路径元数据）、`<user_message>`/`<stdin>` 仅多来源时包裹（纯问答路径逐字节不变）、council 发言记录 `<transcript>`/`<speech seat round>`（缺席 `status="absent"` 自闭合）；system 前置英文常量数据声明（不进 i18n 链）；单测覆盖装配 golden/单来源裸发/声明注入条件/council 标签与缺席标记
+  - 来源：用户提议（多块上下文区隔更明确，防模型中途迷失/误并为一块）× fox/claude-fable-5-1 最佳实践咨询（XML 标签跨厂商最优——Anthropic 官方 prompting 指南明确推荐、OpenAI 列为推荐分隔符；闭合标签是强结束锚点；不常见标签名避撞 HTML；元数据用属性；标签英文语言中立）双通道收敛；本地化裁剪：条件区隔（单来源零变化）+ 声明英文常量化
+  - 工程教训：fake 网关记录的原始 body 里 `<` 被 json.Marshal 转义为 `<`，断言须用无尖括号片段
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 因网关 IP 风控降级 continue-on-error（本地 `.env` 联调替代）
 

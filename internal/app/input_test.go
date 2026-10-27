@@ -24,10 +24,10 @@ func TestAssembleOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "问题\n\n补充\n\n" +
-		"----- file: " + a + " -----\n内容A\n\n" +
-		"----- file: " + b + " -----\n内容B\n\n" +
-		"管道内容"
+	want := "<user_message>\n问题\n\n补充\n</user_message>\n\n" +
+		"<attachment path=\"" + a + "\">\n内容A\n</attachment>\n\n" +
+		"<attachment path=\"" + b + "\">\n内容B\n</attachment>\n\n" +
+		"<stdin>\n管道内容\n</stdin>"
 	if text != want {
 		t.Fatalf("装配结果不符:\n got: %q\nwant: %q", text, want)
 	}
@@ -97,5 +97,29 @@ func TestAssembleOversizedFile(t *testing.T) {
 	_, err := Assemble([]string{"q"}, []string{p}, nil, false, 10)
 	if _, ok := err.(*TooLargeError); !ok {
 		t.Fatalf("应得 TooLargeError，得到 %v", err)
+	}
+}
+
+// 单一来源裸发（不加标签）：纯问答路径零变化；单文件仍带 <attachment>（路径元数据）。
+func TestAssembleSingleSourceUntagged(t *testing.T) {
+	text, err := Assemble([]string{"就一个问题"}, nil, nil, false, 1<<20)
+	if err != nil || text != "就一个问题" {
+		t.Fatalf("单问题应裸发: %q, %v", text, err)
+	}
+	text, err = Assemble(nil, nil, strings.NewReader("管道独占"), true, 1<<20)
+	if err != nil || text != "管道独占" {
+		t.Fatalf("单管道应裸发: %q, %v", text, err)
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "only.txt")
+	if err := os.WriteFile(f, []byte("唯一附件"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text, err = Assemble(nil, []string{f}, nil, false, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "<attachment path=\"" + f + "\">\n唯一附件\n</attachment>"; text != want {
+		t.Fatalf("单附件应带标签保路径:\n got %q\nwant %q", text, want)
 	}
 }

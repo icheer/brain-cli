@@ -152,7 +152,7 @@ func TestAskStdinPipe(t *testing.T) {
 	if code != 0 {
 		t.Fatal("code != 0")
 	}
-	if want := "分析以下日志\n\n管道日志内容"; userTextPart(t, *body) != want {
+	if want := "<user_message>\n分析以下日志\n</user_message>\n\n<stdin>\n管道日志内容\n</stdin>"; userTextPart(t, *body) != want {
 		t.Fatalf("拼接顺序不符: %q", userTextPart(t, *body))
 	}
 }
@@ -169,7 +169,7 @@ func TestAskFileSeparator(t *testing.T) {
 	if code != 0 {
 		t.Fatal("code != 0")
 	}
-	if want := "----- file: " + p + " -----\npackage main"; !strings.Contains(userTextPart(t, *body), want) {
+	if want := "<attachment path=\"" + p + "\">\npackage main\n</attachment>"; !strings.Contains(userTextPart(t, *body), want) {
 		t.Fatalf("分隔头不符: %q", userTextPart(t, *body))
 	}
 }
@@ -366,3 +366,34 @@ func TestAskJSONFailureStillOneObject(t *testing.T) {
 }
 
 const tinyPNGForCmd = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+// 多来源标签块 → system 前置数据声明（英文常量）；单问题 → 无 system。
+func TestAskDataTagDeclaration(t *testing.T) {
+	srv, body := fakeGateway(t, 200, "ok")
+	dir := setupConfig(t, srv.URL+"/v1")
+	p := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(p, []byte("内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, _ := runBrain("ask", "-m", "fast", "-f", p, "看看这个文件")
+	if code != 0 {
+		t.Fatal("code != 0")
+	}
+	// body 为「最近一次请求」的覆盖式记录：多来源请求 → 首条 message 应是声明 system
+	msgs, _ := (*body)["messages"].([]any)
+	m0, _ := msgs[0].(map[string]any)
+	if m0["role"] != "system" || !strings.Contains(fmt.Sprint(m0["content"]), "<attachment>") {
+		t.Fatalf("多来源应有声明 system: %v", m0)
+	}
+
+	askOpts = askOptions{} // cobra flag 状态会跨 runBrain 泄漏（首个 runBrain 带过 -f）
+	code, _, _ = runBrain("ask", "-m", "fast", "就一个问题")
+	if code != 0 {
+		t.Fatal("code != 0")
+	}
+	msgs, _ = (*body)["messages"].([]any)
+	if m0, _ := msgs[0].(map[string]any); m0["role"] == "system" {
+		t.Fatalf("单问题不应有 system: %v", m0)
+	}
+}
