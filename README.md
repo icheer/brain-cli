@@ -2,6 +2,11 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+<p align="center">
+  <img src="banner.jpg" alt="brain — LLM gateway side-brain CLI for host agents">
+</p>
+<p align="center"><a href="https://github.com/icheer/brain-cli">github.com/icheer/brain-cli</a></p>
+
 > The repo is named `brain-cli`; the binary command is **`brain`**.
 
 `brain` is a minimalist CLI that acts as a "side brain" for host agents (Claude Code, Codex, DeepSeek Harness, etc.): it calls an LLM gateway via the OpenAI Chat Completions compatible protocol, performs one high-quality advisory/analysis call, and hands the result back to the agent cleanly. The same model reviewing its own conclusions cannot catch its own systematic bias — brain plugs in heterogeneous cross-vendor models as an independent second opinion.
@@ -109,6 +114,10 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M7 | `brain compare` parallel independent sampling (alias = model-group shortcut, no per-leg failover, any leg OK → exit 0) / `--blind` anonymous review | ✅ done |
 | M8 | `--extra-body` / `--extra-headers` generic passthrough (top-level JSON assign, reserved-key rejection, `@file`, visible in `--dry-run`) | ✅ done |
 | M9 | `brain council` serial debate (blind-parallel round 1 + snake-serial rounds, lens-as-context, absence dropout, sunk-cost protection) | ✅ done |
+
+## Community
+
+- [LINUX DO (`linux.do`)](https://linux.do/) — Where possible begins.
 
 ## License
 

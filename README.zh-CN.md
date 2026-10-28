@@ -2,6 +2,11 @@
 
 [English](README.md) | **简体中文**
 
+<p align="center">
+  <img src="banner.jpg" alt="brain — 给宿主 Agent 用的大模型网关外脑 CLI">
+</p>
+<p align="center"><a href="https://github.com/icheer/brain-cli">github.com/icheer/brain-cli</a></p>
+
 > 仓库名 `brain-cli`，二进制命令名为 **`brain`**。
 
 `brain` 是一个给宿主 Agent（Claude Code、Codex、DeepSeek Harness 等）当"外脑"的极简命令行工具：通过 OpenAI Chat Completions 兼容协议调用大模型网关，负责一次高质量的咨询/分析调用，把结果干净地交还给 Agent。同一个模型复核自己的结论，检不出自己的系统性偏差——brain 把跨厂商的异构模型作为独立第二意见接入宿主。
@@ -106,6 +111,10 @@ brain council -m panel -f design.md \
 | M7 | `brain compare` 并行独立采样（别名=模型组快捷方式、每腿无故障转移、≥1 成功即 exit 0）/ `--blind` 匿名盲测 | ✅ 完成 |
 | M8 | `--extra-body` / `--extra-headers` 通用透传口（JSON 顶层 assign、保留字拒绝、`@file`、`--dry-run` 可见） | ✅ 完成 |
 | M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护） | ✅ 完成 |
+
+## 友情社区
+
+- [LINUX DO (`linux.do`)](https://linux.do/) — 新的理想型社区
 
 ## 许可证
 
