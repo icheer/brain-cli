@@ -117,6 +117,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 ## Community
 
 - [LINUX DO (`linux.do`)](https://linux.do/) — Where possible begins.
+- [V2EX (`v2ex.com`)](https://www.v2ex.com/) — Way to explore.
 
 ## License
 

@@ -114,6 +114,7 @@ brain council -m panel -f design.md \
 ## 友情社区
 
 - [LINUX DO (`linux.do`)](https://linux.do/) — 新的理想型社区
+- [V2EX (`v2ex.com`)](https://www.v2ex.com/) — Way to explore.
 
 ## 许可证
 
