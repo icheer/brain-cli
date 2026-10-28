@@ -54,7 +54,6 @@ func init() {
 	pingCmd.Flags().IntVar(&pingOpts.timeout, "timeout", 20, i18n.T("每项检查的秒数上限（清单检查与逐模型探测各自独立计时）", "per-check timeout in seconds (list check and each probe are timed independently)"))
 	pingCmd.Flags().StringVarP(&pingOpts.model, "model", "m", "", i18n.T("别名或模型 ID：逐个探测其 fallback 链", "alias or model ID: probe each model of its fallback chain"))
 	pingCmd.Flags().BoolVar(&pingOpts.jsonOut, "json", false, i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
-	rootCmd.AddCommand(pingCmd)
 }
 
 // pingJSON 是 ping --json 的输出结构（成败恒定一个对象，error 与 ask --json 同构）。

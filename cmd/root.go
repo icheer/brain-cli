@@ -56,9 +56,37 @@ var (
 	stdinPiped bool
 )
 
+// helpCmd 双语替换 cobra 默认 help 命令（框架自带 Short/Long 为英文且不在 i18n 覆盖面内）。
+// Run 逻辑与 cobra 默认实现一致：定位目标命令并打印其帮助。
+var helpCmd = &cobra.Command{
+	Use:   "help [command]",
+	Short: i18n.T("查看任意命令的帮助", "Help about any command"),
+	Long: i18n.T(`查看 brain 中任意命令的帮助。
+直接输入 brain help [命令路径] 查看完整细节。`,
+		`Help provides help for any command in the application.
+Simply type brain help [path to command] for full details.`),
+	Run: func(c *cobra.Command, args []string) {
+		cmd, _, e := c.Root().Find(args)
+		if cmd == nil || e != nil {
+			c.Printf(i18n.T("未知的帮助主题 %q\n", "Unknown help topic %q\n"), args)
+			_ = c.Root().Usage()
+		} else {
+			cmd.InitDefaultHelpFlag()
+			_ = cmd.Help()
+		}
+	},
+}
+
 func init() {
 	rootCmd.SetVersionTemplate("brain " + version + " (commit " + commit + ")\n")
-	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, modelsCmd, configCmd)
+	// cobra 自带的 completion 命令（shell 补全脚本生成器）对 Agent 场景无用，
+	// 且其英文文案不进双语链、嵌套子命令打错不报错，直接移除
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	// 命令清单按注册序展示（默认按字母序，会把 council 挤到 config 后面）：
+	// ask/compare/council 三个核心原语相邻前置，其后是配置三件套
+	cobra.EnableCommandSorting = false
+	rootCmd.SetHelpCommand(helpCmd)
+	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, initCmd, configCmd, modelsCmd, pingCmd)
 }
 
 func Execute() {

@@ -148,6 +148,11 @@ aliases:
 - [x] 重试条件：连接失败 / 429 / 5xx；指数退避（1s/2s/4s 封顶 8s）+ 遵循 `Retry-After`；上限 `retry_max`（默认 2），且受总 deadline 约束（404/model_not_found/超时直接换模型不重试同模型）
 - [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
+### 3.5 命令树与帮助文案（v0.10.2）
+- [x] 子命令按**注册序**展示（`cobra.EnableCommandSorting=false`）：ask/compare/council 三个核心原语相邻前置，其后 init/config/models/ping（默认字母序会把 council 挤到 config 后面，与「三原语」心智模型不符；来源：用户真机 Windows 反馈）
+- [x] cobra 默认 `completion` 命令**移除**（`DisableDefaultCmd`）：shell 补全对 Agent 场景无用；且其英文文案不进 i18n 链（`--help` 中英混杂的根源）、嵌套子命令打错不报错（cobra legacyArgs 只校验根命令——`brain completion ask` 静默打印 help exit 0）
+- [x] `help` 命令双语化（`SetHelpCommand` 自定义实现，Run 与 cobra 默认一致）；`Usage:`/`Flags:` 等模板骨架词保留英文（CLI 通用惯例词汇，覆写 UsageTemplate 成本不成比例）
+
 ## 4. 模型解析与故障转移
 - [x] `-m` 解析顺序：config.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
 - [x] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级用缓存并 stderr 提示）

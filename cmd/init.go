@@ -55,7 +55,6 @@ func init() {
 	initCmd.Flags().StringVar(&initOpts.baseURL, "base-url", "", i18n.T("网关地址（缺省进入交互询问）", "gateway URL (interactive prompt if omitted)"))
 	initCmd.Flags().StringVar(&initOpts.defaultModel, "default-model", "", i18n.T("默认模型别名（缺省进入交互询问，可留空跳过）", "default model alias (interactive prompt if omitted; blank to skip)"))
 	initCmd.Flags().BoolVar(&initOpts.force, "force", false, i18n.T("已存在 config.yaml 时跳过覆盖确认", "skip the overwrite confirmation when config.yaml exists"))
-	rootCmd.AddCommand(initCmd)
 }
 
 func runInit(cmd *cobra.Command, _ []string) error {
