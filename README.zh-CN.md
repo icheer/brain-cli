@@ -26,6 +26,17 @@
 
 ## 30 秒开始
 
+### 一句话安装——把这段发给你的 Agent
+
+```text
+帮我安装 brain 技能：把仓库 https://github.com/icheer/brain-cli 克隆到临时目录，
+将 skills/brain/ 整个目录复制进你的技能目录（如 ~/.claude/skills/ 或
+.agents/skills/），运行其中的 install.sh 安装 brain 二进制；然后向我要网关的
+base_url 和 api_key，用 brain config set 写入配置；最后跑 brain ping 验证通过。
+```
+
+Agent 会自己拉取仓库并按 README/SKILL.md 行事，这句话不随项目演进失效。二进制当个会话即可调用；技能本体下次会话生效。手动步骤见下。
+
 `brain` 是 **BYOK**（Bring Your Own Key）工具：自身不提供模型服务，需要任意 **OpenAI 兼容 API** 的地址与密钥——不一定是"网关"，官方 API 直用即可，例如：
 
 | 服务 | base_url |

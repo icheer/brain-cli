@@ -26,6 +26,18 @@
 
 ## 30-second start
 
+### One-line install — paste this to your agent
+
+```text
+Install the brain skill for me: clone https://github.com/icheer/brain-cli to a temp
+directory, copy its skills/brain/ into your skills directory (~/.claude/skills/ or
+.agents/skills/), run the install.sh inside it to install the brain binary, then ask
+me for my gateway base_url and api_key and save them with brain config set, and
+finish with brain ping to verify.
+```
+
+The agent fetches the repo and follows its README/SKILL.md on its own, so this line stays valid as the project evolves. The binary is ready in the current session; the skill itself takes effect from the next session. Manual steps below.
+
 `brain` is **BYOK** (Bring Your Own Key): it provides no model service itself. You need the address and key of any **OpenAI-compatible API** — not necessarily a "gateway"; official APIs work directly, for example:
 
 | Service | base_url |
