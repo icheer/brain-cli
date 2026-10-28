@@ -5,7 +5,6 @@
 <p align="center">
   <img src="banner.jpg" alt="brain — LLM gateway side-brain CLI for host agents">
 </p>
-<p align="center"><a href="https://github.com/icheer/brain-cli">github.com/icheer/brain-cli</a></p>
 
 > The repo is named `brain-cli`; the binary command is **`brain`**.
 

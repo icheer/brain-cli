@@ -5,7 +5,6 @@
 <p align="center">
   <img src="banner.jpg" alt="brain — 给宿主 Agent 用的大模型网关外脑 CLI">
 </p>
-<p align="center"><a href="https://github.com/icheer/brain-cli">github.com/icheer/brain-cli</a></p>
 
 > 仓库名 `brain-cli`，二进制命令名为 **`brain`**。
 
