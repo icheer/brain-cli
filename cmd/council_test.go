@@ -113,7 +113,7 @@ func TestCouncilThreeRounds(t *testing.T) {
 	srv, seen := fakeCouncilGateway(t, nil)
 	setupConfig(t, srv.URL+"/v1")
 
-	code, out, errStr := runBrain("council", "-m", "fast", "-C", "3", "问")
+	code, out, errStr := runBrain("council", "-m", "fast", "-r", "3", "问")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
@@ -168,8 +168,8 @@ func TestCouncilValidation(t *testing.T) {
 		t.Fatalf("--dry-run 与 --json 应互斥: code=%d stderr=%q", code, errStr)
 	}
 	councilOpts = councilOptions{rounds: 2} // rounds 有非零默认值，重置须保留
-	if code, _, errStr := runBrain("council", "-m", "fast", "-C", "0", "问"); code != 1 || !strings.Contains(errStr, "≥1") {
-		t.Fatalf("-C 0 应 exit 1: code=%d stderr=%q", code, errStr)
+	if code, _, errStr := runBrain("council", "-m", "fast", "-r", "0", "问"); code != 1 || !strings.Contains(errStr, "≥1") {
+		t.Fatalf("-r 0 应 exit 1: code=%d stderr=%q", code, errStr)
 	}
 	councilOpts = councilOptions{rounds: 2} // rounds 有非零默认值，重置须保留
 	if code, _, errStr := runBrain("council", "-m", "m-a", "问"); code != 1 || !strings.Contains(errStr, "≥2") {
@@ -264,7 +264,7 @@ func TestCouncilAllFailAuth(t *testing.T) {
 	srv, _ := fakeCouncilGateway(t, func(model, body string) int { return http.StatusUnauthorized })
 	setupConfig(t, srv.URL+"/v1")
 
-	code, out, _ := runBrain("council", "-m", "fast", "-C", "1", "--json", "问")
+	code, out, _ := runBrain("council", "-m", "fast", "-r", "1", "--json", "问")
 	if code != 2 {
 		t.Fatalf("全失败 401 应 exit 2, got %d", code)
 	}

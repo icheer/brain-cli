@@ -73,7 +73,7 @@ brain compare -m reason --blind -f report.md "这份报告的结论可靠吗"   
 
 # 串行辩论：第 1 轮并行盲评（互不可见）+ 第 2 轮蛇形交锋（末轮自动收尾）；材料照常 -f / 管道喂
 brain council -m reason -m coding -f design.md "评审这份设计的并发与存储取舍"   # stdout 按 ===== model: X | round r ===== 时间序拼接
-brain council -m reason -C 3 -f design.md "深挖这份架构决策的分歧"              # -C 3 在盲评与收尾之间加一轮增量交锋
+brain council -m reason -r 3 -f design.md "深挖这份架构决策的分歧"              # -r 3 在盲评与收尾之间加一轮增量交锋
 brain council -m reason --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'
 
 # 立场/视角（透镜）：席位-透镜表写进 -s；每次发言会告知模型自己的席位名（-m 展开后的

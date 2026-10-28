@@ -44,11 +44,11 @@ type councilOptions struct {
 var councilOpts councilOptions
 
 var councilCmd = &cobra.Command{
-	Use: "council -m <model>... [-C rounds] [prompt...]",
+	Use: "council -m <model>... [-r rounds] [prompt...]",
 	Short: i18n.T("多模型串行辩论：首轮并行盲评、后续蛇形交锋，发言记录逐轮递增，stdout 按轮次分隔输出原文",
 		"Multi-model serial debate: blind-parallel round 1, snake-serial rounds after; growing transcript, stdout sectioned by round"),
 	Long: i18n.T(`串行辩论：2-N 个模型围绕同一背景材料多轮讨论。混合拓扑——第 1 轮并行盲评
-（席位间互不可见，消灭首轮锚定），第 2..C 轮蛇形串行（偶数轮反转发言顺序，均衡先手/
+（席位间互不可见，消灭首轮锚定），第 2..R 轮蛇形串行（偶数轮反转发言顺序，均衡先手/
 末位优势）；发言记录逐轮递增，后发言者可评价先发言者；末轮为收尾轮（最终立场/观点
 变化/残余分歧）。裁决与综合留给你（宿主）——brain 不内建裁判。
 
@@ -58,7 +58,7 @@ var councilCmd = &cobra.Command{
 「席位-透镜表」写进上下文即可（见 SKILL.md）。
 
 成本与时长：总调用 = 席位数 × 轮次；第 r 轮每次发言的输入 ≈ 固定上下文 + (r-1)×N
-次已积累发言。--timeout 是单次发言调用的预算（墙钟上限 ≈ C × timeout）。一次任务
+次已积累发言。--timeout 是单次发言调用的预算（墙钟上限 ≈ R × timeout）。一次任务
 建议 ≤1 次 council。
 
 失败语义：每席位只做同模型重试、无跨模型故障转移（席位换人=身份造假）；重试仍败记
@@ -66,10 +66,10 @@ var councilCmd = &cobra.Command{
 （exit 0）；全部失败按最可行动退出码；SIGINT 输出已积累发言并以 130 退出。示例：
 
   brain council -m reason -m coding "评审方案A的取舍"
-  brain council -m reason -C 3 "深挖这个架构决策的分歧"
+  brain council -m reason -r 3 "深挖这个架构决策的分歧"
   brain council -m fast --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'`, `Serial debate: 2-N models discuss the same background material over multiple rounds.
 Hybrid topology — round 1 is parallel and blind (seats cannot see each other, killing
-first-speaker anchoring); rounds 2..C are snake-serial (speaking order reversed on even
+first-speaker anchoring); rounds 2..R are snake-serial (speaking order reversed on even
 rounds, balancing first/last-mover advantage). The transcript grows each round; later
 speakers may critique earlier ones; the last round closes (final position / what changed /
 remaining disagreements). Adjudication and synthesis are left to you (the host) — brain
@@ -92,7 +92,7 @@ early but accumulated speeches are still delivered (exit 0); all speeches failed
 actionable exit code; SIGINT dumps the accumulated speeches and exits 130. Examples:
 
   brain council -m reason -m coding "trade-offs of plan A"
-  brain council -m reason -C 3 "dig into the disagreements on this architecture decision"
+  brain council -m reason -r 3 "dig into the disagreements on this architecture decision"
   brain council -m fast --json "discuss" | jq -r '.transcript[] | select(.ok) | .content'`),
 	Args: cobra.ArbitraryArgs,
 	RunE: runCouncil,
@@ -102,7 +102,7 @@ func init() {
 	councilCmd.Flags().StringArrayVarP(&councilOpts.models, "model", "m", nil,
 		i18n.T("模型别名（展开为整组）或字面模型 ID，可重复且支持逗号分隔；至少展开出 2 个模型",
 			"model alias (expands to its whole group) or literal model ID; repeatable, comma-separated; must resolve to >= 2 models"))
-	councilCmd.Flags().IntVarP(&councilOpts.rounds, "rounds", "C", 2,
+	councilCmd.Flags().IntVarP(&councilOpts.rounds, "rounds", "r", 2,
 		i18n.T("轮次预算，每席位每轮发言一次（默认 2：并行立论 + 蛇形交锋收尾；1=单轮并行盲评，等价 compare）",
 			"round budget; each seat speaks once per round (default 2: blind-parallel opening + snake-serial closing; 1 = a single blind-parallel round, equivalent to compare)"))
 	councilCmd.Flags().StringArrayVarP(&councilOpts.files, "file", "f", nil,
