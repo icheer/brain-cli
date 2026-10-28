@@ -32,7 +32,7 @@
 Install the brain skill for me: https://github.com/icheer/brain-cli
 ```
 
-The agent opens the repo and follows its instructions (the skill dir ships an install.sh; after installing the binary it runs `brain ping` to self-check). Without a gateway configured, `ping` fails with the exact fix command on stderr — at that point the agent will naturally ask you for your base_url and api_key. Your key is handed by you to your local agent and lives only in a local 0600 config file; nothing in this repo's scripts touches keys.
+The agent opens the repo and follows its instructions (the skill dir ships an install.sh; after installing the binary it runs `brain ping` to self-check). Without a gateway configured, `ping` fails with the exact fix command on stderr — at that point the agent will naturally ask you for your base_url and api_key. Your key is handed by you to your local agent and lives only in a local 0600 config file; avoid sending plaintext keys to the agent.
 
 The binary is ready in the current session; the skill itself takes effect from the next session. Manual steps below.
 
