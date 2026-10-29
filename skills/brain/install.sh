@@ -135,8 +135,14 @@ else
   echo "警告: SHA256SUMS 中未找到 ${BASE}.tar.gz，跳过校验" >&2
 fi
 tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "brain${EXT}"
-# v0.10.3 起包内含 SKILL.md；对旧版本包容错提取（失败即跳过，后续按存在性判断）
-tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" SKILL.md 2>/dev/null || true
+# v0.10.3 起包内含技能文档（goreleaser 按仓库相对路径打包，成员名带 skills/brain/ 前缀）；
+# 对旧版本包/布局变化容错提取，之后按实际存在位置取用
+SKILL_SRC=""
+for cand in "skills/brain/SKILL.md" "SKILL.md"; do
+  if tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "$cand" 2>/dev/null; then
+    if [ -f "$TMP/$cand" ]; then SKILL_SRC="$TMP/$cand"; break; fi
+  fi
+done
 
 # ensure_global_dir 确保全局目录存在：直建，不行借 sudo，再不行明确指引退出。
 ensure_global_dir() {
@@ -209,9 +215,9 @@ fi
 
 # 同步技能文档：包内 SKILL.md 与二进制同版本出厂，覆盖技能目录里的旧副本
 # （仅当脚本确实位于含 SKILL.md 的技能目录时；内容相同则静默跳过）
-if [ -f "$TMP/SKILL.md" ] && [ -f "$DIR/SKILL.md" ]; then
-  if ! cmp -s "$TMP/SKILL.md" "$DIR/SKILL.md"; then
-    cp "$TMP/SKILL.md" "$DIR/SKILL.md"
+if [ -n "$SKILL_SRC" ] && [ -f "$DIR/SKILL.md" ]; then
+  if ! cmp -s "$SKILL_SRC" "$DIR/SKILL.md"; then
+    cp "$SKILL_SRC" "$DIR/SKILL.md"
     echo "SKILL.md 已同步至 ${VER}"
   fi
 fi
