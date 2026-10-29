@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # brain 安装器：从 GitHub Release 拉取当前平台的二进制（SHA256 校验）。
 # 用法：bash install.sh [--global | --link]（详见 --help）
-#   (无参数)   安装到本技能目录 bin/ 下（默认；SKILL.md 首次使用前引导执行）
+#   (无参数)   首次装到本技能目录 bin/ 下；已有安装时自动检测既有形态
+#             （全局软链 → --link；全局二进制 → --global；两处皆有 → 都更新；
+#              仅技能目录 → 就地升级）按同模式升级
 #   --global  安装到全局二进制目录（默认 /usr/local/bin，Windows Git Bash 为 ~/bin，
 #             BRAIN_GLOBAL_BIN 可改）
 #   --link    安装到本技能目录 bin/ 下，并在全局目录建软链接指向它（单一二进制源：
 #             此后重跑本脚本升级技能即全局生效）
+# 升级时包内 SKILL.md（v0.10.3 起随 Release 发布）会同步覆盖技能目录副本，
+# 保证文档与二进制同版本出厂。
 # 设计说明：Go + TLS 的二进制下限约 6.4MB，无法塞进技能目录（≤1MiB 预期），
 # 故技能只携带本安装器，二进制按需下载。
 # Windows：Git Bash / MSYS / Cygwin 下运行（goreleaser 的 windows 产物为 brain.exe，
@@ -18,11 +22,14 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 usage() {
   cat <<'EOF'
 用法: bash install.sh [--global | --link]
-  (无参数)   安装到本技能目录 bin/ 下（默认）
+  (无参数)   首次装到本技能目录 bin/ 下；已有安装时自动检测既有形态按同模式升级
+            （全局软链=--link；全局二进制=--global；两处皆有=都更新；仅技能目录=就地升级）
   --global  安装到全局二进制目录（默认 /usr/local/bin；不可写时自动 sudo）
   --link    安装到本技能目录 bin/ 下并在全局目录建软链接
             （单一二进制源：此后重跑 install.sh 升级技能即全局生效；
              Windows Git Bash 软链接不可靠，退化为复制）
+升级说明: v0.10.3 起重跑 install.sh 会同步包内 SKILL.md（技能文档随 Release 发布，
+          与二进制同版本出厂）；旧版本安装器无此逻辑，存量安装需手动整目录复制一次
 环境变量: BRAIN_INSTALL_DIR 覆盖技能目录安装位置；BRAIN_GLOBAL_BIN 覆盖全局目录
           （默认 Unix /usr/local/bin，Windows Git Bash ~/bin——Git Bash 在其
             存在时自动加入 PATH，无需管理员）
@@ -96,6 +103,26 @@ else
   GLOBAL_BIN="/usr/local/bin"
 fi
 
+# 智能升级检测（仅无参数调用时；显式 --global/--link 精确执行不检测）：
+# 按既有安装形态自动选择模式。软链优先（最特异）；Git Bash 的 --link 退化形态
+# （全局+技能目录各一份副本）归入 both 一并更新。
+if [ -z "$MODE_FLAGS" ]; then
+  GBIN="${GLOBAL_BIN}/brain${EXT}"
+  LBIN="${BRAIN_INSTALL_DIR:-$DIR/bin}/brain${EXT}"
+  if [ -L "$GBIN" ]; then
+    MODE="link"
+    echo "检测到全局软链（--link 形态），按同模式升级"
+  elif [ -e "$GBIN" ] && [ -e "$LBIN" ]; then
+    MODE="both"
+    echo "检测到全局与技能目录各有一份二进制（Git Bash 的 --link 复制形态或双重安装），两处均更新"
+  elif [ -e "$GBIN" ]; then
+    MODE="global"
+    echo "检测到全局二进制（--global 形态），按同模式升级"
+  elif [ -e "$LBIN" ]; then
+    echo "检测到技能目录二进制，就地升级"
+  fi
+fi
+
 echo "下载 brain ${VER} (${OS}/${ARCH})"
 curl -fsSL "$URL" -o "$TMP/${BASE}.tar.gz"
 curl -fsSL "https://github.com/${REPO}/releases/download/${VER}/SHA256SUMS" -o "$TMP/SHA256SUMS"
@@ -108,6 +135,8 @@ else
   echo "警告: SHA256SUMS 中未找到 ${BASE}.tar.gz，跳过校验" >&2
 fi
 tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "brain${EXT}"
+# v0.10.3 起包内含 SKILL.md；对旧版本包容错提取（失败即跳过，后续按存在性判断）
+tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" SKILL.md 2>/dev/null || true
 
 # ensure_global_dir 确保全局目录存在：直建，不行借 sudo，再不行明确指引退出。
 ensure_global_dir() {
@@ -153,7 +182,7 @@ link_global() { # $1 = 软链接目标（技能目录里的二进制）
 }
 
 case "$MODE" in
-  local | link)
+  local | link | both)
     TARGET="${BRAIN_INSTALL_DIR:-$DIR/bin}"
     mkdir -p "$TARGET"
     cp "$TMP/brain${EXT}" "$TARGET/brain${EXT}"
@@ -165,12 +194,25 @@ case "$MODE" in
     ;;
 esac
 
+if [ "$MODE" = "both" ]; then
+  put_global "$TARGET/brain${EXT}"
+fi
+
 if [ "$MODE" = "link" ]; then
   if [ "$OS" = "windows" ]; then
     echo "Windows Git Bash 软链接不可靠，--link 退化为复制到 ${GLOBAL_BIN}" >&2
     put_global "$TARGET/brain${EXT}"
   else
     link_global "$TARGET/brain${EXT}"
+  fi
+fi
+
+# 同步技能文档：包内 SKILL.md 与二进制同版本出厂，覆盖技能目录里的旧副本
+# （仅当脚本确实位于含 SKILL.md 的技能目录时；内容相同则静默跳过）
+if [ -f "$TMP/SKILL.md" ] && [ -f "$DIR/SKILL.md" ]; then
+  if ! cmp -s "$TMP/SKILL.md" "$DIR/SKILL.md"; then
+    cp "$TMP/SKILL.md" "$DIR/SKILL.md"
+    echo "SKILL.md 已同步至 ${VER}"
   fi
 fi
 
@@ -194,6 +236,9 @@ case "$MODE" in
     ;;
   global)
     echo "完成。全局可用：brain ask -m fast \"...\""
+    ;;
+  both)
+    echo "完成。技能目录: ${TARGET}/brain${EXT}；全局: ${GLOBAL_BIN}/brain${EXT}（两处均已更新；Windows Git Bash 下即 --link 的复制形态）"
     ;;
   link)
     echo "完成。技能目录: ${TARGET}/brain${EXT}；全局: ${GLOBAL_BIN}/brain${EXT} → ${TARGET}/brain${EXT}（重跑 install.sh 升级即全局生效；Windows Git Bash 下为复制副本）"

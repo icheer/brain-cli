@@ -51,6 +51,8 @@ bash skills/brain/install.sh        # skill scenario: download the binary into t
                                     #   append --link to also symlink it into /usr/local/bin (re-running upgrades both),
                                     #   or --global to install there only (auto-sudo if not writable)
 # Windows: run the same script in Git Bash (installs brain.exe; global default ~/bin) or WSL
+# Re-running install.sh upgrades in place: it auto-detects your install layout (symlink /
+# global / skill-dir) and refreshes SKILL.md from the same release tarball (v0.10.3+)
 # or grab your platform's package from https://github.com/icheer/brain-cli/releases
 go install github.com/icheer/brain-cli@latest   # developers
 
@@ -109,7 +111,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 ## Status & roadmap
 
-**:rocket: v0.10.2 released** (M0–M10) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
+**:rocket: v0.10.3 released** (M0–M10) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
 
 | Milestone | Scope | Status |
 | --- | --- | --- |

@@ -51,6 +51,8 @@ bash skills/brain/install.sh        # 技能场景：从 Release 下载二进制
                                     #   追加 --link 可同时软链到 /usr/local/bin（重装即全局升级）；
                                     #   追加 --global 则只装全局（目录不可写时自动 sudo）
 # Windows：Git Bash（原生装 brain.exe，全局默认 ~/bin）或 WSL 下运行同一脚本
+# 重跑 install.sh 即就地升级：自动识别既有安装形态（软链/全局/技能目录），
+# 并从同一 Release 包同步 SKILL.md（v0.10.3 起）
 # 或从 https://github.com/icheer/brain-cli/releases 下载对应平台包
 go install github.com/icheer/brain-cli@latest   # 开发者
 
@@ -106,7 +108,7 @@ brain council -m panel -f design.md \
 
 ## 状态与路线
 
-**:rocket: v0.10.2 已发布**（M0–M10）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.10.3 已发布**（M0–M10）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |

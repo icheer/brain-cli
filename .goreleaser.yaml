@@ -36,6 +36,8 @@ archives:
     files:
       - README.md
       - config.example.yaml
+      - skills/brain/SKILL.md   # 技能文档随包发布：install.sh 升级时同步覆盖技能目录副本，
+                                # 保证文档与二进制同版本出厂（v0.10.3 起）
 
 checksum:
   name_template: SHA256SUMS
