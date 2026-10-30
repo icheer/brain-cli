@@ -27,6 +27,7 @@ import (
 type councilOptions struct {
 	models          []string
 	rounds          int
+	order           string
 	files           []string
 	images          []string
 	system          []string
@@ -48,8 +49,8 @@ var councilCmd = &cobra.Command{
 	Short: i18n.T("多模型串行辩论：首轮并行盲评、后续蛇形交锋，发言记录逐轮递增，stdout 按轮次分隔输出原文",
 		"Multi-model serial debate: blind-parallel round 1, snake-serial rounds after; growing transcript, stdout sectioned by round"),
 	Long: i18n.T(`串行辩论：2-N 个模型围绕同一背景材料多轮讨论。混合拓扑——第 1 轮并行盲评
-（席位间互不可见，消灭首轮锚定），第 2..R 轮蛇形串行（偶数轮反转发言顺序，均衡先手/
-末位优势）；发言记录逐轮递增，后发言者可评价先发言者；末轮为收尾轮（最终立场/观点
+（席位间互不可见，消灭首轮锚定），第 2..R 轮串行交锋，发言顺序默认蛇形（偶数轮反转，均衡先手/
+末位优势；--order rotate=每轮起始席位前移一位、fixed=恒解析序）；发言记录逐轮递增，后发言者可评价先发言者；末轮为收尾轮（最终立场/观点
 变化/残余分歧）。裁决与综合留给你（宿主）——brain 不内建裁判。
 
 -m 与 compare 同构：别名=模型组快捷方式（展开整组），可重复/逗号分隔，跨来源去重后
@@ -69,8 +70,9 @@ var councilCmd = &cobra.Command{
   brain council -m reason -r 3 "深挖这个架构决策的分歧"
   brain council -m fast --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'`, `Serial debate: 2-N models discuss the same background material over multiple rounds.
 Hybrid topology — round 1 is parallel and blind (seats cannot see each other, killing
-first-speaker anchoring); rounds 2..R are snake-serial (speaking order reversed on even
-rounds, balancing first/last-mover advantage). The transcript grows each round; later
+first-speaker anchoring); rounds 2..R are serial with snake order by default (reversed on even
+rounds, balancing first/last-mover advantage; --order rotate advances the
+starting seat each round, fixed keeps resolution order). The transcript grows each round; later
 speakers may critique earlier ones; the last round closes (final position / what changed /
 remaining disagreements). Adjudication and synthesis are left to you (the host) — brain
 ships no built-in judge.
@@ -105,6 +107,9 @@ func init() {
 	councilCmd.Flags().IntVarP(&councilOpts.rounds, "rounds", "r", 2,
 		i18n.T("轮次预算，每席位每轮发言一次（默认 2：并行立论 + 蛇形交锋收尾；1=单轮并行盲评，等价 compare）",
 			"round budget; each seat speaks once per round (default 2: blind-parallel opening + snake-serial closing; 1 = a single blind-parallel round, equivalent to compare)"))
+	councilCmd.Flags().StringVar(&councilOpts.order, "order", "snake",
+		i18n.T("第 2 轮起的发言顺序排布：snake=蛇形（默认，偶数轮反转，末位红利与开轮义务同席结清）；rotate=轮转（每轮起始席位前移一位，无人连续发言）；fixed=恒解析序",
+			"speaking-order layout from round 2 on: snake = default (reversed on even rounds; last-mover perk pairs with next round's opening duty); rotate = starting seat advances one per round (no back-to-back speakers); fixed = resolution order"))
 	councilCmd.Flags().StringArrayVarP(&councilOpts.files, "file", "f", nil,
 		i18n.T("文本文件，可多次", "text file, repeatable"))
 	councilCmd.Flags().StringArrayVarP(&councilOpts.images, "image", "i", nil,
@@ -174,13 +179,14 @@ type councilJSONSpeech struct {
 type councilDryRunOut struct {
 	Models          []string          `json:"models"`
 	Rounds          int               `json:"rounds"`
+	Order           string            `json:"order"`
 	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
 	MaxOutputTokens int               `json:"max_output_tokens,omitempty"`
 	ExtraBody       map[string]any    `json:"extra_body,omitempty"`
 	ExtraHeaders    map[string]string `json:"extra_headers,omitempty"`
 	TextBytes       int64             `json:"text_bytes"`
 	System          string            `json:"system"`
-	Schedule        [][]string        `json:"schedule"` // 每轮发言顺序（蛇形）
+	Schedule        [][]string        `json:"schedule"` // 每轮发言顺序（按 --order 策略）
 	Messages        []gateway.Message `json:"messages"` // 首位席位第 1 轮的实际 messages
 }
 
@@ -294,19 +300,35 @@ func buildCouncilMessages(rules string, ctxParts []gateway.ContentPart, seat str
 	}
 }
 
-// seatOrder 返回第 r 轮的发言顺序（席位下标）：奇数轮=解析序，偶数轮=反转（蛇形，
-// 均衡先手/末位优势；C=2 时首列模型拿到收尾权）。
-func seatOrder(seats []string, round int) []int {
-	order := make([]int, len(seats))
-	for i := range order {
-		order[i] = i
-	}
-	if round%2 == 0 {
-		for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
-			order[i], order[j] = order[j], order[i]
+// seatOrder 返回第 r 轮的发言顺序（席位下标），按 --order 策略：
+//   - snake（默认）：奇数轮=解析序、偶数轮=反转——末位红利与下一轮开轮义务同席结清；
+//     奇数席位时中间席位恒居中（蛇形+奇数 N 的固有几何）；R=2 时首列模型拿到收尾权。
+//   - rotate：每轮起始席位前移一位（B,C,A / C,A,B），无人连续发言，位置随轮摊平。
+//   - fixed：恒解析序，作固定基准（末位优势全程锁定给末列席位）。
+func seatOrder(seats []string, round int, order string) []int {
+	n := len(seats)
+	idx := make([]int, n)
+	switch order {
+	case "rotate":
+		start := (round - 1) % n
+		for i := range idx {
+			idx[i] = (start + i) % n
+		}
+	case "fixed":
+		for i := range idx {
+			idx[i] = i
+		}
+	default: // snake（含空串兜底）
+		for i := range idx {
+			idx[i] = i
+		}
+		if round%2 == 0 {
+			for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
+				idx[i], idx[j] = idx[j], idx[i]
+			}
 		}
 	}
-	return order
+	return idx
 }
 
 func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
@@ -321,6 +343,15 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 	if councilOpts.rounds < 1 {
 		return exitcode.Fail(stderr, exitcode.Usage, "%s",
 			i18n.T("--rounds 应为 ≥1（默认 2）", "--rounds must be >= 1 (default 2)"))
+	}
+	switch councilOpts.order {
+	case "", "snake", "rotate", "fixed":
+		if councilOpts.order == "" {
+			councilOpts.order = "snake"
+		}
+	default:
+		return exitcode.Fail(stderr, exitcode.Usage, "%s",
+			i18n.Tf("--order 仅支持 snake/rotate/fixed（当前 %s）", "--order accepts only snake/rotate/fixed (got %s)", councilOpts.order))
 	}
 	if councilOpts.maxOutputTokens < 0 {
 		return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("--max-output-tokens 应为正整数", "--max-output-tokens must be a positive integer"))
@@ -457,7 +488,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 		schedule := make([][]string, 0, councilOpts.rounds)
 		for r := 1; r <= councilOpts.rounds; r++ {
 			row := make([]string, 0, len(models))
-			for _, i := range seatOrder(models, r) {
+			for _, i := range seatOrder(models, r, councilOpts.order) {
 				row = append(row, models[i])
 			}
 			schedule = append(schedule, row)
@@ -465,6 +496,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 		out, _ := json.Marshal(councilDryRunOut{
 			Models:          models,
 			Rounds:          councilOpts.rounds,
+			Order:           councilOpts.order,
 			ReasoningEffort: councilOpts.reasoningEffort,
 			MaxOutputTokens: councilOpts.maxOutputTokens,
 			ExtraBody:       extraBody,
@@ -615,7 +647,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 				record(results[i], i)
 			}
 		} else {
-			for _, i := range seatOrder(models, r) {
+			for _, i := range seatOrder(models, r, councilOpts.order) {
 				if !alive[i] {
 					continue
 				}

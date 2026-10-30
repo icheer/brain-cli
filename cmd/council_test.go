@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -167,11 +168,11 @@ func TestCouncilValidation(t *testing.T) {
 	if code, _, errStr := runBrain("council", "-m", "fast", "--dry-run", "--json", "问"); code != 1 || !strings.Contains(errStr, "互斥") {
 		t.Fatalf("--dry-run 与 --json 应互斥: code=%d stderr=%q", code, errStr)
 	}
-	councilOpts = councilOptions{rounds: 2} // rounds 有非零默认值，重置须保留
+	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	if code, _, errStr := runBrain("council", "-m", "fast", "-r", "0", "问"); code != 1 || !strings.Contains(errStr, "≥1") {
 		t.Fatalf("-r 0 应 exit 1: code=%d stderr=%q", code, errStr)
 	}
-	councilOpts = councilOptions{rounds: 2} // rounds 有非零默认值，重置须保留
+	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	if code, _, errStr := runBrain("council", "-m", "m-a", "问"); code != 1 || !strings.Contains(errStr, "≥2") {
 		t.Fatalf("单席位应 exit 1: code=%d stderr=%q", code, errStr)
 	}
@@ -204,7 +205,7 @@ func TestCouncilDropoutEarlyTerm(t *testing.T) {
 		}
 	}
 
-	councilOpts = councilOptions{rounds: 2} // rounds 有非零默认值，重置须保留
+	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	code, out, _ = runBrain("council", "-m", "fast", "--json", "问")
 	if code != 0 {
 		t.Fatalf("code=%d", code)
@@ -351,7 +352,7 @@ func TestCouncilTemplateLanguage(t *testing.T) {
 		}
 	}
 	// 中文占比>2% 即中文（含 -s 透镜表）：英文正文 + 中文透镜表应选中文模板
-	councilOpts = councilOptions{rounds: 2}
+	councilOpts = councilOptions{rounds: 2, order: "snake"} // 重置须保留非零默认值
 	code, out, _ := runBrain("council", "-m", "fast", "--dry-run",
 		"-s", "席位-透镜表：m-a 从安全视角；m-b 从性能视角", "Design review question about caching layers")
 	if code != 0 {
@@ -398,5 +399,84 @@ func TestCouncilDryRun(t *testing.T) {
 	}
 	if len(dr.Messages) != 2 || dr.Messages[0].Role != "system" || dr.Messages[1].Role != "user" {
 		t.Fatalf("messages 应为 system+user: %+v", dr.Messages)
+	}
+}
+
+// --order 三策略的调度表（3 席位 × 3 轮，dry-run 零请求）：snake 默认偶数轮反转、
+// rotate 每轮起始席位前移一位、fixed 恒解析序；非法值 exit 1。
+func TestCouncilOrderStrategies(t *testing.T) {
+	srv, seen := fakeCouncilGateway(t, nil)
+	setupConfig(t, srv.URL+"/v1")
+
+	run := func(order string) (string, [][]string) {
+		councilOpts = councilOptions{rounds: 2, order: "snake"} // 重置须保留非零默认值
+		args := []string{"council", "-m", "m-a", "-m", "m-b", "-m", "m-c", "-r", "3", "--dry-run", "问"}
+		if order != "" {
+			args = append(args, "--order", order)
+		}
+		code, out, _ := runBrain(args...)
+		if code != 0 {
+			t.Fatalf("order=%q code=%d", order, code)
+		}
+		var dr struct {
+			Order    string     `json:"order"`
+			Schedule [][]string `json:"schedule"`
+		}
+		if err := json.Unmarshal([]byte(out), &dr); err != nil {
+			t.Fatalf("JSON 解析失败: %v\n%s", err, out)
+		}
+		return dr.Order, dr.Schedule
+	}
+	abc := []string{"m-a", "m-b", "m-c"}
+	cases := []struct {
+		name  string
+		order string
+		want  [][]string
+	}{
+		{"默认蛇形", "", [][]string{abc, {"m-c", "m-b", "m-a"}, abc}},
+		{"rotate", "rotate", [][]string{abc, {"m-b", "m-c", "m-a"}, {"m-c", "m-a", "m-b"}}},
+		{"fixed", "fixed", [][]string{abc, abc, abc}},
+	}
+	for _, c := range cases {
+		gotOrder, sched := run(c.order)
+		wantOrder := c.order
+		if wantOrder == "" {
+			wantOrder = "snake"
+		}
+		if gotOrder != wantOrder {
+			t.Errorf("%s: order 字段=%q want=%q", c.name, gotOrder, wantOrder)
+		}
+		if !reflect.DeepEqual(sched, c.want) {
+			t.Errorf("%s: schedule=%v want=%v", c.name, sched, c.want)
+		}
+	}
+	if len(*seen) != 0 {
+		t.Fatal("dry-run 不应发起请求")
+	}
+
+	// 非法值 exit 1（snake/rotate/fixed 枚举）
+	councilOpts = councilOptions{rounds: 2, order: "snake"} // 重置须保留非零默认值
+	if code, _, errStr := runBrain("council", "-m", "m-a", "-m", "m-b", "--order", "random", "问"); code != 1 || !strings.Contains(errStr, "snake/rotate/fixed") {
+		t.Fatalf("非法 --order 应 exit 1: code=%d stderr=%q", code, errStr)
+	}
+}
+
+// rotate 实弹：3 席位 × 2 轮，第 2 轮起始席位前移一位（m-b 先），stdout 时间序逐字节验证。
+func TestCouncilRotateStdout(t *testing.T) {
+	srv, _ := fakeCouncilGateway(t, nil)
+	setupConfig(t, srv.URL+"/v1")
+
+	code, out, _ := runBrain("council", "-m", "m-a", "-m", "m-b", "-m", "m-c", "-r", "2", "--order", "rotate", "问")
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	want := "===== model: m-a | round 1 =====\nreply:m-a\n\n\n" +
+		"===== model: m-b | round 1 =====\nreply:m-b\n\n\n" +
+		"===== model: m-c | round 1 =====\nreply:m-c\n\n\n" +
+		"===== model: m-b | round 2 =====\nreply:m-b\n\n\n" +
+		"===== model: m-c | round 2 =====\nreply:m-c\n\n\n" +
+		"===== model: m-a | round 2 =====\nreply:m-a\n"
+	if out != want {
+		t.Fatalf("stdout 逐字节不符:\n got %q\nwant %q", out, want)
 	}
 }
