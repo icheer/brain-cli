@@ -18,7 +18,7 @@ bash "$(dirname "$SKILL_DIR")/install.sh"   # 或仓库 skills/brain/install.sh
 
 Windows 宿主在 Git Bash（Claude Code 的 Windows shell 自带）或 WSL 下运行同一脚本；安装器按平台自动装 `brain.exe`（Git Bash 下全局默认 `~/bin`）。
 
-**升级**：重跑 install.sh 即可——自动检测既有安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）按同模式升级，并同步包内 SKILL.md（v0.10.3 起技能文档随 Release 发布，与二进制同版本出厂）。v0.10.3 之前的存量安装器没有同步逻辑：先手动重新复制一次 `skills/brain/` 整目录，此后重跑 install.sh 即保持同步。旧副本会缺新命令的说明（真实案例：宿主在过期副本里 grep 不到 council 章节，只能凭 `--help` 摸黑发起）。
+**升级**：重跑 install.sh 即可——自动检测既有安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）按同模式升级，并同步包内 SKILL.md（v0.10.3 起）与安装器自身（v0.10.5 起原子自更新，新逻辑下次运行生效），三者与二进制同版本出厂。v0.10.5 之前的存量安装器没有这些逻辑：先手动重新复制一次 `skills/brain/` 整目录，此后重跑 install.sh 即保持同步。旧副本会缺新命令的说明（真实案例：宿主在过期副本里 grep 不到 council 章节，只能凭 `--help` 摸黑发起）。
 
 ## council 速览（最复杂的子命令）
 

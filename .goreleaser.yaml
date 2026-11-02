@@ -38,6 +38,8 @@ archives:
       - config.example.yaml
       - skills/brain/SKILL.md   # 技能文档随包发布：install.sh 升级时同步覆盖技能目录副本，
                                 # 保证文档与二进制同版本出厂（v0.10.3 起）
+      - skills/brain/install.sh # 安装器自身随包发布（v0.10.5 起）：升级时原子自更新，
+                                # 旧脚本不再永久缺新逻辑（自举问题的持续解）
 
 checksum:
   name_template: SHA256SUMS

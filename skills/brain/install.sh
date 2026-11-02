@@ -8,8 +8,8 @@
 #             BRAIN_GLOBAL_BIN 可改）
 #   --link    安装到本技能目录 bin/ 下，并在全局目录建软链接指向它（单一二进制源：
 #             此后重跑本脚本升级技能即全局生效）
-# 升级时包内 SKILL.md（v0.10.3 起随 Release 发布）会同步覆盖技能目录副本，
-# 保证文档与二进制同版本出厂。
+# 升级时包内 SKILL.md（v0.10.3 起）与安装器自身（v0.10.5 起）随 Release 发布，
+# 会同步/自更新技能目录副本，保证文档、安装器与二进制同版本出厂。
 # 设计说明：Go + TLS 的二进制下限约 6.4MB，无法塞进技能目录（≤1MiB 预期），
 # 故技能只携带本安装器，二进制按需下载。
 # Windows：Git Bash / MSYS / Cygwin 下运行（goreleaser 的 windows 产物为 brain.exe，
@@ -28,8 +28,9 @@ usage() {
   --link    安装到本技能目录 bin/ 下并在全局目录建软链接
             （单一二进制源：此后重跑 install.sh 升级技能即全局生效；
              Windows Git Bash 软链接不可靠，退化为复制）
-升级说明: v0.10.3 起重跑 install.sh 会同步包内 SKILL.md（技能文档随 Release 发布，
-          与二进制同版本出厂）；旧版本安装器无此逻辑，存量安装需手动整目录复制一次
+升级说明: 重跑 install.sh 会同步包内 SKILL.md（v0.10.3 起）并自更新安装器自身
+          （v0.10.5 起，原子替换，新逻辑下次运行生效）；旧版本安装器无此逻辑，
+          存量安装需手动整目录复制一次进入自动轨道
 环境变量: BRAIN_INSTALL_DIR 覆盖技能目录安装位置；BRAIN_GLOBAL_BIN 覆盖全局目录
           （默认 Unix /usr/local/bin，Windows Git Bash ~/bin——Git Bash 在其
             存在时自动加入 PATH，无需管理员）
@@ -136,11 +137,17 @@ else
 fi
 tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "brain${EXT}"
 # v0.10.3 起包内含技能文档（goreleaser 按仓库相对路径打包，成员名带 skills/brain/ 前缀）；
-# 对旧版本包/布局变化容错提取，之后按实际存在位置取用
+# v0.10.5 起包内另含安装器自身。对旧版本包/布局变化容错提取，之后按实际存在位置取用
 SKILL_SRC=""
+INST_SRC=""
 for cand in "skills/brain/SKILL.md" "SKILL.md"; do
   if tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "$cand" 2>/dev/null; then
     if [ -f "$TMP/$cand" ]; then SKILL_SRC="$TMP/$cand"; break; fi
+  fi
+done
+for cand in "skills/brain/install.sh" "install.sh"; do
+  if tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "$cand" 2>/dev/null; then
+    if [ -f "$TMP/$cand" ]; then INST_SRC="$TMP/$cand"; break; fi
   fi
 done
 
@@ -217,8 +224,33 @@ fi
 # （仅当脚本确实位于含 SKILL.md 的技能目录时；内容相同则静默跳过）
 if [ -n "$SKILL_SRC" ] && [ -f "$DIR/SKILL.md" ]; then
   if ! cmp -s "$SKILL_SRC" "$DIR/SKILL.md"; then
-    cp "$SKILL_SRC" "$DIR/SKILL.md"
-    echo "SKILL.md 已同步至 ${VER}"
+    if cp "$SKILL_SRC" "$DIR/SKILL.md" 2>/dev/null; then
+      echo "SKILL.md 已同步至 ${VER}"
+    else
+      echo "提示: 技能目录不可写，SKILL.md 未能同步" >&2
+    fi
+  fi
+fi
+
+# 安装器自更新（v0.10.5 起）：旧脚本体内没有新逻辑（自举不可能——本次运行为旧行为，
+# 新逻辑下次生效），自更新让脚本自此随版本永不落后。必须走「同目录临时文件 + mv」的
+# 原子替换：bash 增量读脚本，直接 cp 覆写正在执行的脚本会让解释器在旧字节偏移上读到
+# 新内容；mv 换新 inode，运行中的旧 fd 不受影响。Windows Git Bash 对打开中的文件
+# rename 可能失败（句柄锁）/目录只读：降级为一行提示，安装本身不受影响。
+# 与 SKILL.md 同步同门槛：仅当脚本身处技能目录（旁有 SKILL.md 与同名 install.sh）。
+if [ -n "$INST_SRC" ] && [ -f "$DIR/SKILL.md" ] && [ -f "$DIR/install.sh" ] &&
+   ! cmp -s "$INST_SRC" "$DIR/install.sh"; then
+  NEWSH="$DIR/.install.sh.new"
+  if cp "$INST_SRC" "$NEWSH" 2>/dev/null && chmod 0755 "$NEWSH" 2>/dev/null; then
+    if mv -f "$NEWSH" "$DIR/install.sh" 2>/dev/null; then
+      echo "install.sh 已自更新至 ${VER}（新逻辑自下次运行生效）"
+    else
+      rm -f "$NEWSH"
+      echo "提示: install.sh 自更新失败（文件被占用或不可写）；从仓库重新复制 skills/brain/ 后即恢复自动" >&2
+    fi
+  else
+    rm -f "$NEWSH" 2>/dev/null
+    echo "提示: 技能目录不可写，install.sh 未能自更新；从仓库重新复制 skills/brain/ 后即恢复自动" >&2
   fi
 fi
 
