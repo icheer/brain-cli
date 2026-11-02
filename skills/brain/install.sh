@@ -14,6 +14,13 @@
 # 故技能只携带本安装器，二进制按需下载。
 # Windows：Git Bash / MSYS / Cygwin 下运行（goreleaser 的 windows 产物为 brain.exe，
 # 全程按平台带 .exe 后缀；WSL 下 uname 为 Linux，走常规 Unix 路径）。
+
+# 守卫（本段须保持纯 POSIX，且位于 set -o pipefail 之前）：脚本使用 bash 方言，
+# 被 sh/dash 显式调用时给一行明确指引，而不是在 set 行抛晦涩的 Illegal option。
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "错误: 本脚本需要 bash（sh/dash 缺少所需特性），请改用: bash $0 ..." >&2
+  exit 1
+fi
 set -euo pipefail
 
 REPO="icheer/brain-cli"
