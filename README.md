@@ -53,6 +53,8 @@ bash skills/brain/install.sh        # skill scenario: download the binary into t
 # Windows: run the same script in Git Bash (installs brain.exe; global default ~/bin) or WSL
 # Re-running install.sh upgrades in place: it auto-detects your install layout (symlink /
 # global / skill-dir) and refreshes SKILL.md from the same release tarball (v0.10.3+)
+# Uninstall: bash skills/brain/install.sh --uninstall (removes every installed binary
+#            and the global link; idempotent; config file and skill docs stay)
 # or grab your platform's package from https://github.com/icheer/brain-cli/releases
 go install github.com/icheer/brain-cli@latest   # developers
 

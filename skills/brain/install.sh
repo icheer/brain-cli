@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # brain 安装器：从 GitHub Release 拉取当前平台的二进制（SHA256 校验）。
-# 用法：bash install.sh [--global | --link]（详见 --help）
+# 用法：bash install.sh [--global | --link | --uninstall]（详见 --help）
 #   (无参数)   首次装到本技能目录 bin/ 下；已有安装时自动检测既有形态
 #             （全局软链 → --link；全局二进制 → --global；两处皆有 → 都更新；
 #              仅技能目录 → 就地升级）按同模式升级
@@ -10,6 +10,9 @@
 #             此后重跑本脚本升级技能即全局生效）
 # 升级时包内 SKILL.md（v0.10.3 起）与安装器自身（v0.10.5 起）随 Release 发布，
 # 会同步/自更新技能目录副本，保证文档、安装器与二进制同版本出厂。
+# 卸载（v0.10.6 起）：--uninstall 按安装形态反向拆除（全局软链/全局二进制/技能
+# 目录 bin/），幂等、零网络；配置文件（内含 api_key）与技能目录文档不动——
+# 凭据文件的删除应由用户亲手完成。
 # 设计说明：Go + TLS 的二进制下限约 6.4MB，无法塞进技能目录（≤1MiB 预期），
 # 故技能只携带本安装器，二进制按需下载。
 # Windows：Git Bash / MSYS / Cygwin 下运行（goreleaser 的 windows 产物为 brain.exe，
@@ -28,13 +31,16 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
   cat <<'EOF'
-用法: bash install.sh [--global | --link]
+用法: bash install.sh [--global | --link | --uninstall]
   (无参数)   首次装到本技能目录 bin/ 下；已有安装时自动检测既有形态按同模式升级
             （全局软链=--link；全局二进制=--global；两处皆有=都更新；仅技能目录=就地升级）
   --global  安装到全局二进制目录（默认 /usr/local/bin；不可写时自动 sudo）
   --link    安装到本技能目录 bin/ 下并在全局目录建软链接
             （单一二进制源：此后重跑 install.sh 升级技能即全局生效；
              Windows Git Bash 软链接不可靠，退化为复制）
+  --uninstall 卸载：移除探测到的全部安装（全局软链/全局二进制/技能目录 bin/），
+              幂等（未安装也 exit 0）、零网络；配置文件（内含 api_key）与
+              SKILL.md/本脚本不动（彻底移除技能=删除整个技能目录）
 升级说明: 重跑 install.sh 会同步包内 SKILL.md（v0.10.3 起）并自更新安装器自身
           （v0.10.5 起，原子替换，新逻辑下次运行生效）；旧版本安装器无此逻辑，
           存量安装需手动整目录复制一次进入自动轨道
@@ -47,12 +53,18 @@ EOF
 
 MODE="local"
 MODE_FLAGS=""
+UNINSTALL=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --global|--link)
-      [ -z "$MODE_FLAGS" ] || { echo "错误: --global 与 --link 互斥" >&2; exit 1; }
+      [ -z "$MODE_FLAGS" ] || { echo "错误: --global/--link/--uninstall 互斥" >&2; exit 1; }
       MODE_FLAGS="$1"
       MODE="${1#--}"
+      ;;
+    --uninstall)
+      [ -z "$MODE_FLAGS" ] || { echo "错误: --global/--link/--uninstall 互斥" >&2; exit 1; }
+      MODE_FLAGS="$1"
+      UNINSTALL=1
       ;;
     -h|--help)
       usage; exit 0
@@ -91,15 +103,6 @@ if [ "$OS" = "windows" ]; then
   EXT=".exe"
 fi
 
-VER="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" |
-  grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"v/v/;s/"$//')"
-[ -n "$VER" ] || { echo "获取最新版本失败（检查网络/仓库 ${REPO}）" >&2; exit 1; }
-
-BASE="brain_${VER#v}_${OS}_${ARCH}"
-URL="https://github.com/${REPO}/releases/download/${VER}/${BASE}.tar.gz"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-
 # 全局目录默认值：Unix /usr/local/bin；Windows Git Bash 的 /usr/local 位于
 # Git 安装目录（Program Files）下，通常不可写且无 sudo——改用 $HOME/bin
 # （Git Bash 的 /etc/profile 在 ~/bin 存在时自动将其加入 PATH）。
@@ -110,6 +113,71 @@ elif [ "$OS" = "windows" ]; then
 else
   GLOBAL_BIN="/usr/local/bin"
 fi
+
+# 卸载（--uninstall）：与安装侧同一套位置探测反向拆除——全局软链/全局二进制/
+# 技能目录二进制，发现即删、互不依赖，幂等（什么都没有也 exit 0）。不删配置
+# 文件（内含 api_key，凭据文件的删除应由用户亲手完成）与技能目录文档本体
+# （SKILL.md/本脚本；彻底移除技能=删除整个技能目录）。零网络：在版本拉取前
+# 提前退出，离线可卸。全局不可删时借 sudo，与安装侧权限策略一致。
+do_uninstall() {
+  GBIN="${GLOBAL_BIN}/brain${EXT}"
+  LBIN="${BRAIN_INSTALL_DIR:-$DIR/bin}/brain${EXT}"
+  REMOVED=0
+
+  if [ -e "$GBIN" ] || [ -L "$GBIN" ]; then
+    GDESC="二进制"
+    if [ -L "$GBIN" ]; then
+      GDESC="软链"
+    fi
+    if rm -f "$GBIN" 2>/dev/null; then
+      echo "已移除全局${GDESC}: ${GBIN}"
+      REMOVED=1
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo rm -f "$GBIN"
+      echo "已移除全局${GDESC}: ${GBIN}（sudo）"
+      REMOVED=1
+    else
+      echo "错误: ${GBIN} 不可删且系统无 sudo，请手动删除" >&2
+    fi
+  fi
+
+  if [ -e "$LBIN" ]; then
+    LDIR="$(dirname "$LBIN")"
+    if rm -f "$LBIN" 2>/dev/null; then
+      echo "已移除: ${LBIN}"
+      REMOVED=1
+      rmdir "$LDIR" 2>/dev/null || true   # bin 目录空了顺手带走；非空/失败不追问
+    else
+      echo "提示: ${LBIN} 不可删（权限），请手动删除" >&2
+    fi
+  fi
+
+  if [ "$REMOVED" -eq 0 ]; then
+    echo "未发现已安装的 brain 二进制（${GBIN} / ${LBIN}），无可卸载项"
+  fi
+
+  case "$OS" in
+    darwin) CFG="$HOME/Library/Application Support/brain/config.yaml" ;;
+    windows) CFG="${APPDATA:-<AppData>}/brain/config.yaml" ;;
+    *) CFG="${XDG_CONFIG_HOME:-$HOME/.config}/brain/config.yaml" ;;
+  esac
+  echo "配置文件未动（内含 api_key，如需彻底清理请自行删除）: ${CFG}"
+  echo "技能目录的 SKILL.md 与本脚本未动；彻底移除技能时删除整个技能目录即可"
+}
+
+if [ "$UNINSTALL" -eq 1 ]; then
+  do_uninstall
+  exit 0
+fi
+
+VER="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" |
+  grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"v/v/;s/"$//')"
+[ -n "$VER" ] || { echo "获取最新版本失败（检查网络/仓库 ${REPO}）" >&2; exit 1; }
+
+BASE="brain_${VER#v}_${OS}_${ARCH}"
+URL="https://github.com/${REPO}/releases/download/${VER}/${BASE}.tar.gz"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 # 智能升级检测（仅无参数调用时；显式 --global/--link 精确执行不检测）：
 # 按既有安装形态自动选择模式。软链优先（最特异）；Git Bash 的 --link 退化形态

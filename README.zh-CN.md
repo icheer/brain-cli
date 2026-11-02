@@ -53,6 +53,8 @@ bash skills/brain/install.sh        # 技能场景：从 Release 下载二进制
 # Windows：Git Bash（原生装 brain.exe，全局默认 ~/bin）或 WSL 下运行同一脚本
 # 重跑 install.sh 即就地升级：自动识别既有安装形态（软链/全局/技能目录），
 # 并从同一 Release 包同步 SKILL.md（v0.10.3 起）
+# 卸载：bash skills/brain/install.sh --uninstall（移除全部已装二进制与全局链接，
+#       幂等；配置文件与技能文档不动）
 # 或从 https://github.com/icheer/brain-cli/releases 下载对应平台包
 go install github.com/icheer/brain-cli@latest   # 开发者
 
