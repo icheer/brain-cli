@@ -131,14 +131,15 @@ func TestOpenAIGenerationsGolden(t *testing.T) {
 	if cap.Header.Get("Authorization") != "Bearer k" {
 		t.Errorf("Authorization=%q", cap.Header.Get("Authorization"))
 	}
-	// 请求体 golden：统一语义翻译成 size 桶 + quality
+	// 请求体 golden：统一语义翻译成 size 桶 + quality；n 必须是 JSON 数字
+	// （字符串 "1" 会让 Go 网关的 uint 字段 400——v0.11.0 真实事故，勿回退）
 	var body map[string]any
 	if err := json.Unmarshal(cap.Body, &body); err != nil {
 		t.Fatal(err)
 	}
-	for k, want := range map[string]any{"model": "gpt-image-x", "prompt": "a cat", "n": "1", "size": "1536x1024", "quality": "medium"} {
+	for k, want := range map[string]any{"model": "gpt-image-x", "prompt": "a cat", "n": float64(1), "size": "1536x1024", "quality": "medium"} {
 		if body[k] != want {
-			t.Errorf("body[%q]=%v want %v", k, body[k], want)
+			t.Errorf("body[%q]=%#v want %#v", k, body[k], want)
 		}
 	}
 	// 响应归一：b64 解码 + mime sniff + revised_prompt + usage

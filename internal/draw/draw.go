@@ -254,8 +254,11 @@ func (c *Client) openai(ctx context.Context, req *Request) (*Result, error) {
 		}
 		contentType, body = w.FormDataContentType(), &buf
 	} else {
-		b, err := json.Marshal(map[string]string{
-			"model": req.Model, "prompt": req.Prompt, "n": "1", "size": size, "quality": quality,
+		// n 必须是 JSON 数字而非字符串——OpenAI 规范如此，且 Go 实现的网关（new-api 系）
+		// 把 n 解析成 uint，收到 "1" 直接 400（v0.11.0 实弹事故：cannot unmarshal string
+		// into Go struct field Alias.n of type uint）
+		b, err := json.Marshal(map[string]any{
+			"model": req.Model, "prompt": req.Prompt, "n": 1, "size": size, "quality": quality,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", i18n.T("序列化请求失败", "failed to marshal request"), err)
