@@ -85,6 +85,7 @@ func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	askOpts = askOptions{}
 	compareOpts = compareOptions{}
 	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
+	drawOpts = drawOptions{aspect: "auto", res: "auto"}     // aspect/res 同理有非零默认值
 	modelsOpts = modelsOptions{}
 	pingOpts = pingOptions{}
 	initOpts = struct {

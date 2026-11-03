@@ -18,7 +18,7 @@
 | 文件类型 | 文本文件 + 图片（本地路径 / URL）；PDF、音频明确排除，后续看情况 |
 | 流式 | 传输层始终 SSE（长连接可承载网关侧 keep-alive，防中间层掐断空闲连接）；**stderr 心跳是纯本地进度显示，不产生网络流量**；stdout 默认等完成一次性输出；`--stream` 增量打印供人肉交互（M2） |
 | 定位 | 纯咨询/分析外脑，不做 Function Calling——指 brain 作为客户端不编排工具；端点背后是裸模型还是自带工具调用的第三方领域 agent 均不关心（OpenAI 兼容协议只约定文本进出，2026-10-26 随 README「领域 agent」段落澄清） |
-| 输出落盘 | 不做 `-o`；统一用 shell 重定向 `> file`（SKILL.md 写明该模式）；Windows 重定向编码出现真实用户反馈再考虑 |
+| 输出落盘 | 不做 `-o`；统一用 shell 重定向 `> file`（SKILL.md 写明该模式）；Windows 重定向编码出现真实用户反馈再考虑。**例外（M11，2026-11-03）**：draw 的图片是二进制工件，不走 stdout/重定向，自动落盘 + stdout 打印保存路径（见「图像生成 draw」行）——该例外仅限 draw，文本输出仍守原决策 |
 | `--json` 失败语义 | 无论成败，stdout 恒定输出**一个** JSON 对象（失败时填 `error` 字段），退出码照旧（M1 落地） |
 | 采样参数 | 不为采样调优参数设专属 flag：`-e`/`--max-output-tokens` 保留为高频**快车道**（opt-in 纯透传，空/0=字段缺席）；其余请求体参数（temperature/top_k/response_format/厂商私有字段…）统一走 `--extra-body`（M8，2026-10-26 修订原「v1 不暴露也不默认传」决策）：JSON 对象（内联或 `@file`，可重复有序合并，后者同名键覆盖）顶层 assign 纯透传，效果与支持面由上游决定（网关 400 即时报错）；**保留字两级（v0.8.1 修订）**：硬保留 model/messages/stream/stream_options 与 headers 的 Authorization/Content-Type/Accept 直接 exit 1（防静默覆盖生命线字段/鉴权混乱）；软保留 reasoning_effort/max_tokens 允许经 extra 传入，但与 `-e`/`--max-output-tokens` 同时出现时**以快车道 flag 为准**（stderr 一行提示，覆盖可见可查）；`--extra-headers` 同构（默认头之后应用，User-Agent 允许覆盖）；`--dry-run` 展示合并结果；设计对齐 OpenAI SDK 的 extra_body/extra_headers 逃生口 |
 | aliases 段缺失 | 可选；缺失时 `-m` 直接按字面模型 ID 处理 |
@@ -34,6 +34,7 @@
 | 界面语言 | 中英双语（zh/en）：`BRAIN_LANG` > `LC_ALL`/`LC_MESSAGES`/`LANG`（zh* → 中文，其他已设值 → 英文）> 时区偏移兜底（UTC+8 → 中文，否则英文；+8 区内无夏令时，按偏移判断免维护时区名清单）；语言随环境每次动态读取；stdout 模型正文永不翻译；Agent 分支以退出码与 --json 字段为准，不依赖 stderr 文案语言 |
 | 多模型编排 | `brain compare`：同一问题**并行独立采样** ≥2 个模型，原文按分隔头拼接（`--json` 为 `responses[]`），裁决与合成留给宿主（宿主自身是模型，不内建 judge）；别名在 compare 语境下是**模型组快捷方式**——`-m reason` 展开为该链全部模型（与 ask 的链首位+容灾语义不同，帮助文案写明）；每腿为具体模型**不做故障转移**（静默转移摧毁「谁回答了什么」的透明性），同模型重试仍允许；部分失败语义同 `ping -m`：≥1 腿成功 exit 0、失败腿 stderr+`--json` 明示，全失败按最可行动码（2>3>4>5）；`--blind` 输出匿名 `Model_A/B/…`（真名映射走 stderr，防宿主裁决的品牌偏见） |
 | 串行辩论（council） | `brain council -m … [-r 轮次，默认 2]`：2-N 个异构模型围绕固定上下文多轮讨论，裁决留宿主（同 compare 不内建裁判）。**混合拓扑**（M9，2026-10-26）：第 1 轮并行盲评（席位互不可见，消灭首轮锚定，复用 compare 并发）+ 第 2..R 轮串行交锋，发言顺序 `--order snake（默认）|rotate|fixed`（2026-10-30 增：snake=偶数轮反转，末位红利与下一轮开轮义务同席结清，R=2 时首列席位收尾、奇数 N 时中间席位恒居中；rotate=每轮起始席位前移一位，无人连续发言，位置随轮摊平；fixed=恒解析序作固定基准）；发言记录以 `<speech seat="…" round="…">` 标签递增拼接、缺席自闭合（`status="absent"`），**动态指令永远置于消息末尾**（严格前缀追加，命中网关 prompt caching）；每次发言告知席位与轮次，末轮为收尾指令（最终立场/观点变化/残余分歧）；`-r 1` 即单轮并行盲评（等价 compare）。**透镜=上下文**：席位-透镜表由调用方写进固定上下文（`-s` 追加在议事规则后），不做 persona 语法（`#` 等符号与真实模型 ID 撞车、短词语法表达力不足）；「虚拟伟人智囊团」提示词评审吸收三要素（透镜≠扮演、张力工程、末轮引向共识），协调员/整合者不搬；`-m` 去重（model_name=席位唯一 ID，同模型不占两席——同权重分饰两角=左右互搏）。失败语义：单元素链同模型重试、**无跨模型故障转移**（席位中途换人=跨轮身份造假）；重试仍败记缺席退出，有效席位 <2 提前终止但已积累发言照常输出（exit 0，沉没成本保护）；全失败按最可行动码（复用 compare 排序）；SIGINT dump 已积累发言 + exit 130。`--timeout` 为单次发言预算（墙钟 ≈ R×timeout，总调用 = N×R）；**模板语言跟随内容**：议事/指令模板与透镜表同入上下文，语言取自材料而非系统 locale——调用方上下文 + `-s` 的汉字占比 >2% 即中文模板，否则英文（stderr 提示仍走 i18n 检测链，两者互不相干）；stdout 按 `===== model: X \| round r =====` 时间序拼接，`--json`：status（completed/partial/interrupted/failed）/usage 合计/transcript[]（每次发言含 usage/latency/error）；`[PASS]` 提前共识退出、`--blind` 见第 8 节缓办项 |
+| 图像生成 draw（M11，2026-11-03） | `brain draw [prompt]` 双协议生图，**协议按模型名推断**：含 `gemini`（不区分大小写）→ Gemini 原生（`/v1beta/models/{model}:generateContent`，responseModalities=TEXT+IMAGE），其余一律 OpenAI Images（`/v1/images/generations`；带 `-i` 参考图切 `/v1/images/edits` multipart，gpt-image 方言）；config `draw.type`（gemini\|openai）可覆盖推断——中转站双向包装（gemini 包成 images 端点 / nano-banana 裸名直连原生）两个反例都真实存在。**draw 配置段**：`model` 必填（不回退 default_model，chat 语义与生图语义不同）、`base_url`/`api_key` 缺省兜底顶层同名字段、`type` 覆盖；`BRAIN_DRAW_MODEL/BASE_URL/API_KEY/TYPE` 环境变量同构；`brain config set draw.*` 支持。**base_url 智能拼接**（与 chat 约定一致）：末尾 `/v<数字>`、`/v1beta` 可写可不写——openai 侧写了不重拼、没写补 `/v1`；gemini 侧写了 `/v1beta` 原样、顶层 `/v1` 兜底进来自动换 `/v1beta`、裸域名补 `/v1beta`（draw 不配 base_url 复用顶层地址也走得通）。**参数统一语义**：`--aspect`（auto\|1:1\|16:9\|9:16\|4:3\|3:4\|3:2\|2:3\|5:4\|4:5\|21:9）与 `--res`（auto\|1K\|2K\|4K）各协议方言翻译——openai→size 桶（1024x1024/1536x1024/1024x1536，页面实测映射）+quality（low/medium/high）；gemini→imageConfig.aspectRatio/imageSize 直传，auto 全部省略字段；不做方言逆向翻译。prompt=位置参数+管道 stdin（不做 `-f`/XML 标签——生图 prompt 是单一指令非多来源材料）；`-i` 参考图仅本地文件（URL 报错——multipart/inlineData 需要字节）。**响应归一四形态**：b64_json / data[].url（自行下载）/ inlineData（camelCase）/ imageUrl·inlineData.url 变体；gemini 文字 part 走 stderr（模型附言，安全拒绝时 NoImageError 携带 blockReason 与模型文字）；多图只取第 1 张（**v1 固定 n=1**）。**落盘自动**：优先当前工作目录、不可写退系统临时目录（stderr 提示），`brain-draw-<时间戳>.<ext>`（ext 按响应 mime/字节头，推不出用 .bin 不撒谎）同秒序号避让（rename 会静默覆盖，须先 Stat）、临时文件+rename 原子写；**stdout 恰一行保存路径**（绝对路径；修订「输出落盘」行的 draw 例外），`--json` 恒定单对象（saved_path/mime/bytes/usage/latency/revised_prompt/error 与 ask 同构）。**不做自动重试**（图像按张计费，失败凭退出码人工重发——与 ask 的重试策略刻意不同）；退出码/超时（默认 timeout_seconds）/SIGINT(130)/心跳复用 chat 侧全套；gemini 鉴权双通道（`?key=` 页面实测形态 + `x-goog-api-key` 头官方推荐，同值并存两端皆收；key 绝不出现在任何输出，dry-run 的 endpoint 不含鉴权参数）。请求形状对照实测页面 prompt.keyi.ma/image.html 前端逐项对齐（其「OpenAI 流式传输」开关只作用于其第三种 chat 生图方言，与 brain 无关）。`--dry-run` 输出最终请求形状（endpoint/翻译后 params/refs 摘要）零网络 |
 
 ## 1. 目标与非目标
 
@@ -129,6 +130,7 @@ aliases:
 - [x] `--json`（M1）失败时 stdout 仍恒定输出一个 JSON 对象（`error` 字段非空，code 与退出码一致），退出码照旧，Agent 可无条件 jq 解析
 - [x] 空正文处理：exit 0 + stderr 警告（finish_reason 与思维链长度提示）
 - [x] `--quiet`：关闭 stderr 心跳/耗时/转移提示（警告与错误保留；供宿主把 stdout/stderr 合并进同一输出的场景）
+- [x] `draw`（M11）：stdout 恰一行保存路径（图片二进制自动落盘不走 stdout——见第 0 节「图像生成 draw」行）；`--json` 恒定单对象与 ask 同构；gemini 模型附言/`revised_prompt` 走 stderr
 
 ### 3.3 退出码规范（Agent 消费的第一优先级信号）
 | code | 含义 |
@@ -149,7 +151,7 @@ aliases:
 - [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
 ### 3.5 命令树与帮助文案（v0.10.2）
-- [x] 子命令按**注册序**展示（`cobra.EnableCommandSorting=false`）：ask/compare/council 三个核心原语相邻前置，其后 init/config/models/ping（默认字母序会把 council 挤到 config 后面，与「三原语」心智模型不符；来源：用户真机 Windows 反馈）
+- [x] 子命令按**注册序**展示（`cobra.EnableCommandSorting=false`）：ask/compare/council/draw 四个核心原语相邻前置，其后 init/config/models/ping（默认字母序会把 council 挤到 config 后面，与「核心原语」心智模型不符；来源：用户真机 Windows 反馈；draw 入列 2026-11-03 M11）
 - [x] cobra 默认 `completion` 命令**移除**（`DisableDefaultCmd`）：shell 补全对 Agent 场景无用；且其英文文案不进 i18n 链（`--help` 中英混杂的根源）、嵌套子命令打错不报错（cobra legacyArgs 只校验根命令——`brain completion ask` 静默打印 help exit 0）
 - [x] `help` 命令双语化（`SetHelpCommand` 自定义实现，Run 与 cobra 默认一致）；`Usage:`/`Flags:` 等模板骨架词保留英文（CLI 通用惯例词汇，覆写 UsageTemplate 成本不成比例）
 
@@ -225,13 +227,17 @@ aliases:
   - 状态（2026-10-27）：完成——`<attachment>` 恒包裹（保路径元数据）、`<user_message>`/`<stdin>` 仅多来源时包裹（纯问答路径逐字节不变）、council 发言记录 `<transcript>`/`<speech seat round>`（缺席 `status="absent"` 自闭合）；system 前置英文常量数据声明（不进 i18n 链）；单测覆盖装配 golden/单来源裸发/声明注入条件/council 标签与缺席标记
   - 来源：用户提议（多块上下文区隔更明确，防模型中途迷失/误并为一块）× fox/claude-fable-5-1 最佳实践咨询（XML 标签跨厂商最优——Anthropic 官方 prompting 指南明确推荐、OpenAI 列为推荐分隔符；闭合标签是强结束锚点；不常见标签名避撞 HTML；元数据用属性；标签英文语言中立）双通道收敛；本地化裁剪：条件区隔（单来源零变化）+ 声明英文常量化
   - 工程教训：fake 网关记录的原始 body 里 `<` 被 json.Marshal 转义为 `<`，断言须用无尖括号片段
+- **M11**：`brain draw` 图像生成（双协议：Gemini 原生 + OpenAI Images，按模型名推断 + `draw.type` 覆盖；draw 配置段兜底顶层 + 智能拼接；`--aspect`/`--res` 统一语义方言翻译；`-i` 参考图；自动落盘 + stdout 路径；`--json` 同构；无自动重试）
+  - 状态（2026-11-03）：功能完成——单测全绿：协议推断矩阵、智能拼接矩阵（裸域名/`/v1`/`/v1beta`/`/v2`/带路径/尾斜杠）、openai 请求体 golden（统一语义翻译 size 桶/quality）+ edits multipart 解析（image[] 多文件）、gemini 请求体 golden（text/inlineData 参考图/responseModalities/imageConfig 省略条件）+ 双通道鉴权、响应归一四形态（b64/URL 下载/inlineData/imageUrl）、错误矩阵（非 2xx/200 夹 error/空数据/SAFETY 拦截/超时）、cmd 层退出码（无 model→7、非法 type→7、非法 aspect/res→1、401→2）、dry-run 零网络（不可达端口证伪）、落盘（同秒序号避让/未知 mime sniff/extFor）；live e2e 见下
+  - e2e（真实网关，2026-11-03）：待 live 冒烟回填
+  - 来源：用户需求重启 §8.3 旧草案（暂缓原因=本网关 new-api 转坏 openai images 请求）——双协议 + 独立 `draw.base_url` 正是绕开手段；协议调研对照 Perplexity 汇总，请求形状与响应归一逐项对齐实测页面 prompt.keyi.ma/image.html 的前端实现（经该页真实用户量验证的双协议路径）；相对旧草案的三处演进：双协议（旧单协议）→ draw 配置段（旧找 image 别名）→ 自动落盘（旧「stdout 图片字节 > file」在人类裸跑时会糊终端二进制）
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 因网关 IP 风控降级 continue-on-error（本地 `.env` 联调替代）
 
 ## 8. 开放问题
 1. **网关密钥发放**：若网关目前只有一把共享 key，公开分发前需先支持按用户发 key（网关侧配套工作，需确认可行性与时间点）
 2. Windows 真机测试环境来源。安装器层 Windows 适配已完成（2026-10-27）：MINGW/MSYS/CYGWIN 平台识别、brain.exe 全链路命名、Git Bash 全局默认 ~/bin、无 sudo 优雅指引、`.gitattributes` 钉 LF——均以伪造 `uname`/`curl` 的模拟环境五项验证通过（含真实 v0.10.0 windows 包的下载/校验/解包）；真机 Git Bash / arm64 Windows / Cygwin 验证仍待此条解决
-3. **图像生成（`brain draw`）暂缓**（2026-10-26）：构想与设计草案已收敛——定位扩展为「外脑 = 咨询 + 生成」（均为单次无状态调用，不违背「不做 Function Calling」）；基建复用约九成（别名链/退出码/`--json`/心跳/分发）；关键取舍：draw 不回退 default_model（chat 语义），无 `-m` 时找 `image` 别名再无则报错；stdout 输出图片字节（`brain draw "..." > cat.png`，URL 形态自动下载后输出、b64 解码）；n=1 固定单张；`--size` 等 opt-in 纯透传。暂缓原因：实测本网关 new-api 对 `/v1/images/generations` 疑似把绘图请求转成聊天格式发给上游图像模型、上游 400（探测确认路由存在：503 model_not_found ≠ 404，但转换损坏只有实弹能暴露）——属网关侧问题，升级 new-api / 修正渠道路由后可重启
+3. **图像生成（`brain draw`）已落地（2026-11-03，M11）**：决策移入第 0 节「图像生成 draw」行；重启时相对旧草案（2026-10-26 暂缓）的三处演进——双协议（旧草案仅 openai images 单协议）、draw 配置段（旧草案无 `-m` 时找 `image` 别名）、自动落盘替换「stdout 图片字节 `> file`」（旧形态在人类裸跑时会向终端倾倒二进制）。旧暂缓原因（本网关 new-api 疑似把 images 请求转成聊天格式发给上游、上游 400）对 openai adapter 依然成立——由独立 `draw.base_url` 指向可用端点绕开；聊天方言生图（Seedream 系走 `/v1/chat/completions` + 图片以 markdown URL 塞正文）留作将来第三 adapter 的槽位，本期不做
 4. **`brain council`（串行辩论原语）已落地（2026-10-26，M9）**：决策移入第 0 节「串行辩论（council）」行；原三担忧的对策内化——成本超线性→混合拓扑 + C 默认 2 + 成本公式入 help/SKILL；序位效应→首轮盲评 + 蛇形轮换 + 不设指定总结者；中途失败→缺席退出 + 沉没成本保护。缓办项见第 6 条
 5. **alias 角色预设（system/`-e`/max_tokens 绑进别名段）拒绝**（2026-10-26）：同一模型在不同场景下的预设是多变的，预设系统提示词没有稳定复用价值——`-s` 的临时性即正确形态（第三轮双外脑评审 Opus personas 独立段 / Gemini P2 角色钢印两个形态均被用户否决）。若未来出现真实复用需求再议
 6. **council 缓办项**（2026-10-26）：`[PASS]` 提前共识退出（需标记解析协议且动摇固定预算可预测性，待真实使用暴露轮次浪费再议）；`--blind` 匿名（辩论语境的礼貌性收敛可能比 compare 更需要匿名，v1 未提供）；persona 语法（透镜=上下文已覆盖；`-m "model#lens"` 因符号与真实模型 ID 撞车、短词表达力不足被拒；同模型分饰正反方因 `-m` 去重语义不支持——同权重共享盲区，宿主可用单模型 ask + 圆桌提示词自演）

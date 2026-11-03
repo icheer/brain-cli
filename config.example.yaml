@@ -18,6 +18,18 @@ max_input_bytes: 1048576                    # 输入保护上限（1 MiB）
 retry_max: 2                                # 同一模型最大重试次数
 models_cache_ttl_seconds: 86400
 user_agent: ""                              # 逃生口：个别网关校验 UA 时覆盖默认 brain/<version>；不伪装浏览器 UA
+
+# 图像生成（brain draw，可选段；缺省时 draw 报 exit 7 并给修复指引）：
+#   model 必填（draw 不回退 default_model——chat 模型与生图模型语义不同）；
+#   base_url / api_key 缺省兜底顶层同名字段（生图走另一家时单独配）；
+#   type 可选 gemini|openai，留空按模型名推断（含 gemini → Gemini 原生，其余 → OpenAI Images）——
+#   中转站把 gemini 包成 images 端点（或反向）时用它覆盖。
+#   base_url 末尾 /v1、/v1beta 可写可不写；gemini 原生侧顶层 /v1 兜底进来会自动换成 /v1beta。
+#draw:
+#  model: gemini-3.1-flash-image
+#  base_url: https://your-image-endpoint     # 可选
+#  api_key: sk-your-image-key                # 可选
+#  type: gemini                              # 可选
 aliases:
   fast:
     models: [anti/gemini-3.8-flash, claude-haiku-5-5]

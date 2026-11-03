@@ -35,10 +35,11 @@ var configCmd = &cobra.Command{
   brain config edit            open in $VISUAL / $EDITOR`),
 }
 
-// configKeys 允许 get/set/list 的键，与 config.Config 字段一一对应。
+// configKeys 允许 get/set/list 的键，与 config.Config 字段一一对应（draw 段为嵌套键）。
 var configKeys = []string{
 	"base_url", "api_key", "default_model",
 	"timeout_seconds", "max_input_bytes", "retry_max", "models_cache_ttl_seconds", "user_agent",
+	"draw.model", "draw.base_url", "draw.api_key", "draw.type",
 }
 
 func init() {
@@ -114,7 +115,7 @@ var configListCmd = &cobra.Command{
 		out := cmd.OutOrStdout()
 		for _, k := range configKeys {
 			v, _ := cfgValue(cfg, k)
-			if k == "api_key" {
+			if k == "api_key" || k == "draw.api_key" {
 				v = mask(v)
 			}
 			fmt.Fprintf(out, "%s = %s\n", k, v)
@@ -186,6 +187,14 @@ func cfgValue(cfg config.Config, key string) (string, bool) {
 		return strconv.Itoa(cfg.ModelsCacheTTLSeconds), true
 	case "user_agent":
 		return cfg.UserAgent, true
+	case "draw.model":
+		return cfg.Draw.Model, true
+	case "draw.base_url":
+		return cfg.Draw.BaseURL, true
+	case "draw.api_key":
+		return cfg.Draw.APIKey, true
+	case "draw.type":
+		return cfg.Draw.Type, true
 	}
 	return "", false
 }
@@ -212,6 +221,18 @@ func cfgSetValue(cfg *config.Config, key, value string) error {
 		return setPositiveInt(key, value, &cfg.ModelsCacheTTLSeconds, 1)
 	case "user_agent":
 		cfg.UserAgent = value
+	case "draw.model":
+		cfg.Draw.Model = value
+	case "draw.base_url":
+		cfg.Draw.BaseURL = value
+	case "draw.api_key":
+		cfg.Draw.APIKey = value
+	case "draw.type":
+		v := strings.ToLower(strings.TrimSpace(value))
+		if v != "" && v != "gemini" && v != "openai" {
+			return fmt.Errorf("%s", i18n.Tf("draw.type 仅支持 gemini|openai（留空按模型名推断），得到 %q", "draw.type accepts gemini|openai only (empty = infer from model name), got %q", value))
+		}
+		cfg.Draw.Type = v
 	default:
 		return fmt.Errorf("%s", i18n.Tf("未知配置项 %q，可用: %s", "unknown config key %q, available: %s", key, strings.Join(configKeys, ", ")))
 	}

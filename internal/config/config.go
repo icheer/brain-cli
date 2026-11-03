@@ -27,7 +27,18 @@ type Config struct {
 	RetryMax              int              `yaml:"retry_max"`
 	ModelsCacheTTLSeconds int              `yaml:"models_cache_ttl_seconds"`
 	UserAgent             string           `yaml:"user_agent"`        // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
+	Draw                  DrawConfig       `yaml:"draw,omitempty"`    // 图像生成段（M11），可选；缺省时 draw 报 exit 7 给修复指引
 	Aliases               map[string]Alias `yaml:"aliases,omitempty"` // 别名 → fallback 链 + 场景标注（DESIGN.md 2.3）
+}
+
+// DrawConfig 是 config.yaml 的 draw 段（DESIGN.md 第 0 节「图像生成 draw」行）：
+// model 必填（draw 不回退 default_model——chat 语义与生图语义不同）；
+// base_url/api_key 可选，缺省兜底顶层同名字段；type 可选覆盖按模型名的协议推断。
+type DrawConfig struct {
+	Model   string `yaml:"model,omitempty"`   // 生图模型 ID（或被 -m 临时覆盖）
+	BaseURL string `yaml:"base_url,omitempty"` // 可选；缺省用顶层 base_url（末尾 /v1、/v1beta 可写可不写）
+	APIKey  string `yaml:"api_key,omitempty"`  // 可选；缺省用顶层 api_key
+	Type    string `yaml:"type,omitempty"`     // gemini|openai；空=按模型名推断（含 gemini → gemini 原生）
 }
 
 // Default 返回代码内默认值（优先级最低）。
@@ -119,6 +130,19 @@ func Load() (Config, []string, error) {
 			return cfg, warnings, fmt.Errorf("%s: %w", i18n.T("BRAIN_TIMEOUT 应为秒数", "BRAIN_TIMEOUT should be seconds"), perr)
 		}
 		cfg.TimeoutSeconds = n
+	}
+	// draw 段环境变量覆盖（一次性使用场景，与顶层同构）
+	if v := os.Getenv("BRAIN_DRAW_MODEL"); v != "" {
+		cfg.Draw.Model = v
+	}
+	if v := os.Getenv("BRAIN_DRAW_BASE_URL"); v != "" {
+		cfg.Draw.BaseURL = v
+	}
+	if v := os.Getenv("BRAIN_DRAW_API_KEY"); v != "" {
+		cfg.Draw.APIKey = v
+	}
+	if v := os.Getenv("BRAIN_DRAW_TYPE"); v != "" {
+		cfg.Draw.Type = v
 	}
 
 	// 字段缺失/非法时回退默认值，避免 0 值导致立即超时或拒绝一切输入

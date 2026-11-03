@@ -83,10 +83,10 @@ func init() {
 	// 且其英文文案不进双语链、嵌套子命令打错不报错，直接移除
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	// 命令清单按注册序展示（默认按字母序，会把 council 挤到 config 后面）：
-	// ask/compare/council 三个核心原语相邻前置，其后是配置三件套
+	// ask/compare/council/draw 四个核心原语相邻前置，其后是配置三件套
 	cobra.EnableCommandSorting = false
 	rootCmd.SetHelpCommand(helpCmd)
-	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, initCmd, configCmd, modelsCmd, pingCmd)
+	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, drawCmd, initCmd, configCmd, modelsCmd, pingCmd)
 }
 
 func Execute() {
