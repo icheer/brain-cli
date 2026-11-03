@@ -40,13 +40,14 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 | J11 | `--json` 恒定单对象：成功 / 失败两形态 jq 均可直接解析，error.code = 退出码 | dry + live | 成功与构造失败各一次 | ✅ | 开发期 |
 | J12 | 长推理不中断：>60s 请求心跳正常、SSE 保活、重试吃同一总预算 | live | 真网关长推理（one-api 系脏网关） | ✅ | 开发期 |
 
-## compare / council
+## compare / council / draw
 
 | # | 旅程 | 变体 | 验证方式 | 状态 | 最近验证 |
 | --- | --- | --- | --- | --- | --- |
 | J13 | compare 并发：多腿 + `--blind` 匿名 + `--json` responses[] | live | 真网关 2 腿实弹 | ✅ | v0.10.x |
 | J14 | council 干跑：`--order` 三策略调度矩阵、透镜表展开（席位认领展开后模型 ID）、缺席/SIGINT 语义 | dry | 单测矩阵 + `--dry-run` | ✅ | v0.10.4 |
 | J15 | council 实弹小规模：2 席 2 轮，stdout 分隔头时间序、末轮自动收尾 | live | 真网关 | ✅ | v0.10.4 |
+| J20 | draw：无 draw 段 exit 7 指引 → dry-run 零网络 → live 1K/2K 文生图 + `-i` 参考图编辑 → `--json` 恒定单对象 → 退出码映射（401→2）；`draw.type` 覆盖与 base_url 智能拼接抽查 | dry + live | httptest 矩阵 + 真实网关（gemini 原生；openai 侧 httptest 全覆盖） | ✅ | 开发期（2026-11-03） |
 
 ## 宿主集成（最重要的欠账区）
 

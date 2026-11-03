@@ -16,6 +16,7 @@
 - **Model alias routing**: `fast` / `reason` / `coding` / `vision` aliases plus automatic failover (retry with backoff, switch along the chain, noted on stderr) — agents never memorize model names
 - **Parallel cross-examination**: `brain compare -m a,b -m reason` sends the same question to several models at once; replies concatenated under `===== model: X =====` headers (`--json` gives `responses[]`). In compare, an alias is a model-group shortcut and each leg does no failover; `--blind` prints anonymous Model_A/B to guard the adjudicator against brand bias
 - **Serial debate `brain council`**: N models discuss one topic over rounds — round 1 goes out blind-parallel (kills first-speaker anchoring), later rounds are serial with a growing transcript so later speakers critique earlier ones (default snake order; `--order rotate|fixed` changes the layout); the final round states each seat's position, what changed, and unresolved disagreements. Lenses/stances need no syntax: a seat-to-lens table written into the context *is* the protocol. Seats retry same-model only (a mid-council model swap would be identity fraud); absences are marked, and paid-for speeches survive early termination or SIGINT
+- **Image generation `brain draw`**: one call, one image, auto-saved. Protocol is inferred from the model name (contains `gemini` → Gemini native, anything else → OpenAI Images; `draw.type` overrides); a separate optional `draw:` config section falls back to your existing base_url/api_key, and `--aspect`/`--res` are unified semantics translated per protocol. `-i` reference images switch to edit mode. stdout prints exactly the saved file path; `--json` gives the usual single object. No auto-retry — images are billed per piece
 - **Optional reasoning effort & output budget**: `-e low|medium|high|…` and `--max-output-tokens N`, both passed through as-is (unset = model/gateway defaults; tiers are model-specific — e.g. Zhipu GLM-5.3 only has low/high/max)
 - **Generic escape hatch `--extra-body` / `--extra-headers`**: any request-body field (temperature, response_format, vendor-specific…) and HTTP header passes through as a top-level JSON assign (inline or `@file`, repeatable and merged in order); reserved keys are rejected to prevent self-sabotage, `--dry-run` shows the merged result; mirrors OpenAI SDK's extra_body/extra_headers
 - **Parseable**: exit codes 0-7 / 130 with full semantics; `--json` always emits exactly one object (jq parses unconditionally; `error.code` matches the exit code)
@@ -91,6 +92,14 @@ brain council -m panel -f design.md \
   "should this design ship as is"
 ```
 
+```bash
+# Image generation (auto-saves to cwd; stdout = the saved path)
+brain config set draw.model gemini-3.1-flash-image   # once; draw.base_url/api_key optional (fall back to top-level)
+brain draw --res 1K "a cute cat wearing a tiny knitted hat, watercolor style"
+brain draw -i cat.jpg "change the hat to red"        # reference image -> edit mode
+# --aspect 1:1|16:9|9:16|… and --res 1K|2K|4K translate per protocol; no auto-retry (billed per image)
+```
+
 For agents: copy or link `skills/brain/` into `.claude/skills/` (or `.agents/skills/`); SKILL.md teaches the host agent when to call brain, how, and when not to.
 
 ## brain vs. host subagents
@@ -127,6 +136,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M7 | `brain compare` parallel independent sampling (alias = model-group shortcut, no per-leg failover, any leg OK → exit 0) / `--blind` anonymous review | ✅ done |
 | M8 | `--extra-body` / `--extra-headers` generic passthrough (top-level JSON assign, reserved-key rejection, `@file`, visible in `--dry-run`) | ✅ done |
 | M9 | `brain council` serial debate (blind-parallel round 1 + snake-serial rounds, lens-as-context, absence dropout, sunk-cost protection) | ✅ done |
+| M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout) | ✅ done |
 
 ## Community
 

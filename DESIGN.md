@@ -229,7 +229,7 @@ aliases:
   - 工程教训：fake 网关记录的原始 body 里 `<` 被 json.Marshal 转义为 `<`，断言须用无尖括号片段
 - **M11**：`brain draw` 图像生成（双协议：Gemini 原生 + OpenAI Images，按模型名推断 + `draw.type` 覆盖；draw 配置段兜底顶层 + 智能拼接；`--aspect`/`--res` 统一语义方言翻译；`-i` 参考图；自动落盘 + stdout 路径；`--json` 同构；无自动重试）
   - 状态（2026-11-03）：功能完成——单测全绿：协议推断矩阵、智能拼接矩阵（裸域名/`/v1`/`/v1beta`/`/v2`/带路径/尾斜杠）、openai 请求体 golden（统一语义翻译 size 桶/quality）+ edits multipart 解析（image[] 多文件）、gemini 请求体 golden（text/inlineData 参考图/responseModalities/imageConfig 省略条件）+ 双通道鉴权、响应归一四形态（b64/URL 下载/inlineData/imageUrl）、错误矩阵（非 2xx/200 夹 error/空数据/SAFETY 拦截/超时）、cmd 层退出码（无 model→7、非法 type→7、非法 aspect/res→1、401→2）、dry-run 零网络（不可达端口证伪）、落盘（同秒序号避让/未知 mime sniff/extFor）；live e2e 见下
-  - e2e（真实网关，2026-11-03）：待 live 冒烟回填
+  - e2e（真实网关，2026-11-03）：gemini 原生四发全绿——①1K 文生图（水彩橘猫+毛线帽，931.8KiB jpeg，11.7s，画面与 prompt 对题经图像模型复核）；②2K + `--aspect 1:1` + `--json`（3.4MiB，48.8s，心跳 3 次正常打点，usage 2071 tokens，恒定单对象）；③`-i` 参考图编辑（以①的产出为参考「换红帽子」，12.6s，图像模型复核确认帽子变红、猫与场景保持——inlineData 参考图真实通路）；④dry-run（裸域名 base_url 自动拼 /v1beta 端点、无 key 泄漏、零网络）；`config list` draw.* 四键齐全（api_key 打码）、命令树 draw 位于第 4 原语。openai images 侧无可用真实端点（旧暂缓原因仍在），由 httptest 全覆盖 + 独立 `draw.base_url` 留真实通路
   - 来源：用户需求重启 §8.3 旧草案（暂缓原因=本网关 new-api 转坏 openai images 请求）——双协议 + 独立 `draw.base_url` 正是绕开手段；协议调研对照 Perplexity 汇总，请求形状与响应归一逐项对齐实测页面 prompt.keyi.ma/image.html 的前端实现（经该页真实用户量验证的双协议路径）；相对旧草案的三处演进：双协议（旧单协议）→ draw 配置段（旧找 image 别名）→ 自动落盘（旧「stdout 图片字节 > file」在人类裸跑时会糊终端二进制）
 - **并行工作流**：分发流水线（第 5 节）在 M1 期间就绪，M1 结束即可公开发布
   - 状态：**v0.1.0 已发布**（https://github.com/icheer/brain-cli/releases/tag/v0.1.0），6 平台产物 + SHA256SUMS，install.sh 全链路（下载→校验→运行）实测通过；CI 真实网关 e2e 因网关 IP 风控降级 continue-on-error（本地 `.env` 联调替代）
