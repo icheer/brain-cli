@@ -80,7 +80,7 @@ func GeminiBase(base string) string {
 
 // AspectSize：统一语义 --aspect → openai size 桶（prompt.keyi.ma 实测映射表）。
 var AspectSize = map[string]string{
-	"1:1": "1024x1024",
+	"1:1":  "1024x1024",
 	"21:9": "1536x1024", "16:9": "1536x1024", "3:2": "1536x1024",
 	"4:3": "1536x1024", "5:4": "1536x1024",
 	"4:5": "1024x1536", "3:4": "1024x1536", "2:3": "1024x1536", "9:16": "1024x1536",

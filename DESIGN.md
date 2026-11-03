@@ -95,7 +95,7 @@ aliases:
 
 ### 2.4 配置管理命令与密钥安全
 - [x] `brain config path | get <key> | set <key> <value> | list | edit`
-- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）；可选交互生成 aliases 段（拉 /v1/models 做选单，序号或完整 ID 均可，多个组成 fallback 链）——修复最小安装下 SKILL 模板别名 404 的冷启动断点（2026-10-25 外脑评审证实该断点）；覆盖重建时原有别名默认保留
+- [x] `brain init`：交互式引导写入 config.yaml（任何命令检测到无配置时，stderr 给出确切的下一条命令提示）；可选交互生成 aliases 段（拉 /v1/models 做选单，序号或完整 ID 均可，多个组成 fallback 链）——修复最小安装下 SKILL 模板别名 404 的冷启动断点（2026-10-25 外脑评审证实该断点）；覆盖重建时原有别名默认保留；末尾可选配置 draw 段（2026-11-03：model 必填、base_url/api_key 留空兜底顶层、type 回车=按模型名推断；已有 draw 配置默认保留——此前覆盖重建会静默清空，与别名当初栽的是同一个坑；回车/EOF 均为「不配置」，脚本化安全）
 - [x] 密钥读取顺序：环境变量 > config.yaml；文件权限非 0600 时 stderr 警告
 - [x] 不提供 `--api-key` flag（避免进入 shell history / `ps` 输出；一次性使用走环境变量）
 

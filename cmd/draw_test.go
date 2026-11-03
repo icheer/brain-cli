@@ -339,3 +339,100 @@ func TestSaveImageAndExtFor(t *testing.T) {
 		t.Errorf("extFor webp=%q", ext)
 	}
 }
+
+// ---- init 向导的 draw 步骤 ----
+
+// setupInitTest init 类测试的隔离环境（无既有 config.yaml 起点，draw 环境变量清空）。
+func setupInitTest(t *testing.T) (dir, cfgPath string) {
+	t.Helper()
+	dir = t.TempDir()
+	cfgPath = filepath.Join(dir, "config.yaml")
+	t.Setenv("BRAIN_CONFIG", cfgPath)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("BRAIN_API_KEY", "sk-env")
+	for _, k := range []string{"BRAIN_DRAW_MODEL", "BRAIN_DRAW_BASE_URL", "BRAIN_DRAW_API_KEY", "BRAIN_DRAW_TYPE"} {
+		t.Setenv(k, "")
+	}
+	initOpts = struct {
+		baseURL      string
+		defaultModel string
+		force        bool
+	}{}
+	return dir, cfgPath
+}
+
+func TestInitDrawSetupFlow(t *testing.T) {
+	_, cfgPath := setupInitTest(t)
+	// base_url / api_key / default_model / 跳过别名 / 配置 draw=y / model / 留空 base_url / 留空 key / 留空 type
+	stdin = strings.NewReader("https://gw.example.com/v1\nsk-abc\nfast\nn\ny\ngpt-image-x\n\n\n\n")
+	t.Cleanup(func() { stdin = os.Stdin })
+
+	code, _, errStr := runBrain("init")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	s := string(data)
+	if !strings.Contains(s, "draw:") || !strings.Contains(s, "model: gpt-image-x") {
+		t.Fatalf("缺 draw 段:\n%s", s)
+	}
+	if strings.Contains(s, "draw.base_url") || strings.Contains(s, "base_url: \"\"") ||
+		strings.Contains(s, "draw.type") || strings.Contains(s, "api_key: \"\"") {
+		t.Fatalf("留空项不应写入（omitempty 兜底语义）:\n%s", s)
+	}
+}
+
+func TestInitDrawSkipOnEnter(t *testing.T) {
+	_, cfgPath := setupInitTest(t)
+	stdin = strings.NewReader("https://gw.example.com/v1\nsk-abc\nfast\nn\n\n") // draw 问题回车 → 跳过
+	t.Cleanup(func() { stdin = os.Stdin })
+
+	code, _, _ := runBrain("init")
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(data), "draw:") {
+		t.Fatalf("回车跳过不应有 draw 段:\n%s", data)
+	}
+}
+
+// init 覆盖重建：已有 draw 段默认保留（此前会被静默清空——与别名当初栽的是同一个坑）。
+func TestInitOverwriteKeepsDraw(t *testing.T) {
+	_, cfgPath := setupInitTest(t)
+	os.WriteFile(cfgPath, []byte("base_url: https://old/v1\napi_key: k\n"+
+		"draw:\n  model: keep-me\n  type: gemini\n"+
+		"aliases:\n  reason:\n    models: [r-1]\n"), 0o600)
+
+	// 覆盖 y / 新 base_url / api_key 空(→env) / default_model 空 / 重新生成别名空(→保留) / 重新配置 draw EOF(→保留)
+	stdin = strings.NewReader("y\nhttps://new.example/v1\n\n\n\n")
+	t.Cleanup(func() { stdin = os.Stdin })
+
+	code, _, _ := runBrain("init")
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	s := string(data)
+	if !strings.Contains(s, "base_url: https://new.example/v1") {
+		t.Fatalf("应写入新 base_url:\n%s", s)
+	}
+	if !strings.Contains(s, "model: keep-me") || !strings.Contains(s, "type: gemini") {
+		t.Fatalf("覆盖重建应保留既有 draw 段:\n%s", s)
+	}
+}
+
+func TestInitDrawInvalidTypeFallsBack(t *testing.T) {
+	_, cfgPath := setupInitTest(t)
+	stdin = strings.NewReader("https://gw.example.com/v1\nsk-abc\nfast\nn\ny\nm\n\n\nfoo\n") // type 输 foo
+	t.Cleanup(func() { stdin = os.Stdin })
+
+	code, _, _ := runBrain("init")
+	if code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(data), "foo") {
+		t.Fatalf("非法 type 应清空（按模型名推断）:\n%s", data)
+	}
+}

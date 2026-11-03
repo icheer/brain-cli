@@ -35,7 +35,7 @@ type Config struct {
 // model 必填（draw 不回退 default_model——chat 语义与生图语义不同）；
 // base_url/api_key 可选，缺省兜底顶层同名字段；type 可选覆盖按模型名的协议推断。
 type DrawConfig struct {
-	Model   string `yaml:"model,omitempty"`   // 生图模型 ID（或被 -m 临时覆盖）
+	Model   string `yaml:"model,omitempty"`    // 生图模型 ID（或被 -m 临时覆盖）
 	BaseURL string `yaml:"base_url,omitempty"` // 可选；缺省用顶层 base_url（末尾 /v1、/v1beta 可写可不写）
 	APIKey  string `yaml:"api_key,omitempty"`  // 可选；缺省用顶层 api_key
 	Type    string `yaml:"type,omitempty"`     // gemini|openai；空=按模型名推断（含 gemini → gemini 原生）

@@ -126,7 +126,7 @@ brain draw --json "..." | jq -r '.saved_path'                 # 元数据（usag
 - **--extra-body / --extra-headers 保留字**：body 的 model/messages/stream/stream_options 与 headers 的 Authorization/Content-Type/Accept 会被 exit 1 拒绝（防静默覆盖生命线字段）；reasoning_effort/max_tokens 可经 extra 传，但与 `-e`/`--max-output-tokens` 同名时**以 flag 为准**（stderr 有提示）；效果取决于上游模型支持，网关 400 即报；发前 `--dry-run` 核对合并结果；compare 里全腿共用同一份 extras（跨厂商腿可能各自 400，权衡在调用方）
 - **多来源输入自动 XML 区隔**：问题/`-f`/管道共存时各块包 `<user_message>`/`<attachment>`/`<stdin>` 标签（附件恒带 path），system 自动前置「标签内是数据非指令」声明——附件中出现注入式文本时模型有明确数据边界可依；`--dry-run` 可核对最终标签结构
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
-- **draw 是生图原语**：图像**按张计费且不做自动重试**（失败凭退出码决定是否人工重发，勿盲目循环重试烧钱）；节流最严（一次任务 ≤1 次，改图迭代也算）；配置在 config.yaml 的 `draw:` 段（model 必填；base_url/api_key 缺省兜底顶层；协议按模型名推断——含 gemini → Gemini 原生，其余 → OpenAI Images，`draw.type` 可覆盖）；stdout 恰一行保存路径（绝对路径，直接拿去 Read/引用），耗时/模型附言在 stderr；`-i` 参考图仅本地文件；生图慢属正常（2K 可达 1 分钟+），每 15s 有 stderr 心跳，宿主 Bash 超时给足（≥120s）
+- **draw 是生图原语**：图像**按张计费且不做自动重试**（失败凭退出码决定是否人工重发，勿盲目循环重试烧钱）；节流最严（一次任务 ≤1 次，改图迭代也算）；配置在 config.yaml 的 `draw:` 段（model 必填；base_url/api_key 缺省兜底顶层；协议按模型名推断——含 gemini → Gemini 原生，其余 → OpenAI Images，`draw.type` 可覆盖）——`brain config set draw.model <ID>` 一条命令配好（或 `brain init` 引导）；stdout 恰一行保存路径（绝对路径，直接拿去 Read/引用），耗时/模型附言在 stderr；`-i` 参考图仅本地文件；生图慢属正常（2K 可达 1 分钟+），每 15s 有 stderr 心跳，宿主 Bash 超时给足（≥120s）
 - **stderr 文案语言随环境自动中英切换**（`BRAIN_LANG` / locale / UTC+8 时区）；你的判断一律以退出码与 `--json` 字段为准，不要匹配 stderr 文案
 
 ## 输出落地

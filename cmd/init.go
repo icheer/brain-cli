@@ -36,7 +36,8 @@ base_url 只要是 OpenAI 兼容 API 即可，不限于网关（如 https://api.
 api_key 刻意不设 flag（避免进入 shell history / ps 输出）：
 交互输入，或留空后由 BRAIN_API_KEY 环境变量提供。
 随后可选生成 aliases 段（fast/reason/coding/vision，拉网关模型清单做选单）；
-覆盖重建时原有别名默认保留。`, `Interactive first-time setup: asks for base_url, api_key, default_model in
+末尾可选配置图像生成 draw 段（model 必填，base_url/api_key 留空兜底顶层）——
+覆盖重建时原有别名与 draw 段默认保留。`, `Interactive first-time setup: asks for base_url, api_key, default_model in
 turn and writes config.yaml (0600). Items given via flags skip the prompt,
 which keeps scripting easy:
 
@@ -46,8 +47,10 @@ base_url can be any OpenAI-compatible API, not just a gateway
 (e.g. https://api.openai.com/v1). api_key deliberately has no flag (keeps it
 out of shell history / ps): type it interactively, or leave blank and provide
 BRAIN_API_KEY instead. Optionally generates an aliases section afterwards
-(fast/reason/coding/vision, from the gateway model listing); rebuilding an
-existing config keeps its aliases by default.`),
+(fast/reason/coding/vision, from the gateway model listing), then optionally
+sets up the image-generation draw section (model required; blank
+base_url/api_key fall back to the top-level values) — rebuilding an
+existing config keeps its aliases and draw section by default.`),
 	RunE: runInit,
 }
 
@@ -78,10 +81,13 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// 覆盖重建时保留原有别名（单文件化后别名就在 config.yaml 里，不能跟着重建丢掉）
+	// 覆盖重建时保留原有别名与 draw 段（单文件化后两者都在 config.yaml 里，不能跟着重建丢掉；
+	// draw 段 2026-11-03 补——此前 init 覆盖重建会静默清空生图配置）
 	oldAliases := map[string]config.Alias{}
+	var oldDraw config.DrawConfig
 	if old, _, err := config.Load(); err == nil {
 		oldAliases = old.Aliases
+		oldDraw = old.Draw
 	}
 	if len(oldAliases) > 0 {
 		fmt.Fprintf(stdout, "%s\n", i18n.Tf("将保留原有别名 %d 个（brain config edit 可修改）", "keeping %d existing alias(es) (edit via brain config edit)", len(oldAliases)))
@@ -89,6 +95,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	cfg := config.Default()
 	cfg.Aliases = oldAliases
+	cfg.Draw = oldDraw
 
 	baseURL := initOpts.baseURL
 	if baseURL == "" {
@@ -130,6 +137,42 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if regen {
 		if err := initAliases(cmd.Context(), in, stdout, stderr, &cfg); err != nil {
 			return err
+		}
+	}
+
+	// 图像生成（draw）段：可选引导，不必手填 yaml；已有 draw 配置默认保留（同别名待遇），
+	// 无则默认跳过——回车/EOF 均为「不配置」，脚本化与非交互运行安全
+	hasOldDraw := oldDraw.Model != "" || oldDraw.BaseURL != "" || oldDraw.APIKey != "" || oldDraw.Type != ""
+	setupDraw := false
+	if hasOldDraw {
+		fmt.Fprintf(stdout, "%s\n", i18n.Tf("已保留现有 draw 配置（model=%s）", "keeping existing draw config (model=%s)", oldDraw.Model))
+		setupDraw = strings.EqualFold(ask(i18n.T("重新配置图像生成？[y/N] ", "reconfigure image generation? [y/N] ")), "y")
+	} else {
+		setupDraw = strings.EqualFold(ask(i18n.T("配置图像生成 brain draw？（可选，回车跳过）[y/N] ", "set up image generation brain draw? (optional, Enter skips) [y/N] ")), "y")
+	}
+	if setupDraw {
+		d := config.DrawConfig{}
+		d.Model = ask(i18n.T("draw.model 生图模型 ID（名字含 gemini 走 Gemini 原生，其余走 OpenAI Images）: ",
+			"draw.model image model ID (a name containing gemini goes Gemini native, anything else OpenAI Images): "))
+		if d.Model == "" {
+			fmt.Fprintln(stdout, i18n.T("未填模型，draw 配置已跳过（之后 brain config set draw.model 可补）",
+				"no model given; draw setup skipped (add later via brain config set draw.model)"))
+		} else {
+			d.BaseURL = ask(i18n.T("draw.base_url（留空=用顶层 base_url；末尾 /v1、/v1beta 可写可不写）: ",
+				"draw.base_url (blank = top-level base_url; trailing /v1 or /v1beta optional): "))
+			if d.BaseURL != "" && !strings.HasPrefix(d.BaseURL, "http") {
+				return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("draw.base_url 须以 http(s):// 开头", "draw.base_url must start with http(s)://"))
+			}
+			d.APIKey = ask(i18n.T("draw.api_key（留空=用顶层 api_key；输入会回显）: ",
+				"draw.api_key (blank = top-level api_key; input is echoed): "))
+			d.Type = strings.ToLower(ask(i18n.T("draw.type（gemini|openai，回车=按模型名推断）: ",
+				"draw.type (gemini|openai; Enter = infer from the model name): ")))
+			if d.Type != "" && d.Type != "gemini" && d.Type != "openai" {
+				fmt.Fprintln(stdout, i18n.T("draw.type 仅支持 gemini|openai，已按留空（模型名推断）处理",
+					"draw.type accepts gemini|openai only; treated as blank (inferred)"))
+				d.Type = ""
+			}
+			cfg.Draw = d
 		}
 	}
 

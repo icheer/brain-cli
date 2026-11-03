@@ -50,9 +50,9 @@ func recordingServer(t *testing.T, status int, resp string) (*httptest.Server, *
 func TestInferType(t *testing.T) {
 	cases := []struct{ model, want string }{
 		{"gemini-3.1-flash-image", TypeGemini},
-		{"Gemini-3-Pro-Image", TypeGemini},        // 大小写不敏感
-		{"anti/gemini-3.8-flash", TypeGemini},     // 网关前缀带斜杠
-		{"nano-banana-pro", TypeOpenAI},           // 不含 gemini 字样 → openai（draw.type 覆盖兜此类）
+		{"Gemini-3-Pro-Image", TypeGemini},    // 大小写不敏感
+		{"anti/gemini-3.8-flash", TypeGemini}, // 网关前缀带斜杠
+		{"nano-banana-pro", TypeOpenAI},       // 不含 gemini 字样 → openai（draw.type 覆盖兜此类）
 		{"gpt-image-2.5-sunburst", TypeOpenAI},
 		{"doubao-seedream-4-0", TypeOpenAI},
 		{"qwen-image", TypeOpenAI},

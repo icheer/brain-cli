@@ -122,17 +122,17 @@ func init() {
 
 // drawJSON 是 draw --json 的输出结构（成败恒定一个对象，与 ask --json 同构）。
 type drawJSON struct {
-	Model         string         `json:"model"`
-	Requested     string         `json:"requested_model"`
-	Type          string         `json:"type"`
-	SavedPath     string         `json:"saved_path,omitempty"`
-	MIME          string         `json:"mime,omitempty"`
-	Bytes         int            `json:"bytes,omitempty"`
-	ImagesTotal   int            `json:"images_total,omitempty"`
-	RevisedPrompt string         `json:"revised_prompt,omitempty"`
-	Usage         *draw.Usage    `json:"usage,omitempty"`
-	LatencyMs     int64          `json:"latency_ms"`
-	Error         *askJSONError  `json:"error"`
+	Model         string        `json:"model"`
+	Requested     string        `json:"requested_model"`
+	Type          string        `json:"type"`
+	SavedPath     string        `json:"saved_path,omitempty"`
+	MIME          string        `json:"mime,omitempty"`
+	Bytes         int           `json:"bytes,omitempty"`
+	ImagesTotal   int           `json:"images_total,omitempty"`
+	RevisedPrompt string        `json:"revised_prompt,omitempty"`
+	Usage         *draw.Usage   `json:"usage,omitempty"`
+	LatencyMs     int64         `json:"latency_ms"`
+	Error         *askJSONError `json:"error"`
 }
 
 func runDraw(cmd *cobra.Command, args []string) (retErr error) {
