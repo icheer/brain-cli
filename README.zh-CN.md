@@ -133,6 +133,7 @@ brain draw -i cat.jpg "把帽子换成红色"               # 参考图 → 编�
 | M7 | `brain compare` 并行独立采样（别名=模型组快捷方式、每腿无故障转移、≥1 成功即 exit 0）/ `--blind` 匿名盲测 | ✅ 完成 |
 | M8 | `--extra-body` / `--extra-headers` 通用透传口（JSON 顶层 assign、保留字拒绝、`@file`、`--dry-run` 可见） | ✅ 完成 |
 | M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护） | ✅ 完成 |
+| M10 | 多来源输入 XML 区隔（`<user_message>`/`<attachment>`/`<stdin>` 标签 + 数据非指令 system 声明）；compare/council 分隔头前双空行 | ✅ 完成 |
 | M11 | `brain draw` 图像生成（双协议 Gemini 原生 / OpenAI Images 按名推断 + `draw.type` 覆盖、draw 配置段兜底顶层、`--aspect`/`--res` 统一语义、`-i` 参考图、自动落盘 + stdout 路径） | ✅ 完成 |
 
 ## 友情社区

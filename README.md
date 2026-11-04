@@ -136,6 +136,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M7 | `brain compare` parallel independent sampling (alias = model-group shortcut, no per-leg failover, any leg OK → exit 0) / `--blind` anonymous review | ✅ done |
 | M8 | `--extra-body` / `--extra-headers` generic passthrough (top-level JSON assign, reserved-key rejection, `@file`, visible in `--dry-run`) | ✅ done |
 | M9 | `brain council` serial debate (blind-parallel round 1 + snake-serial rounds, lens-as-context, absence dropout, sunk-cost protection) | ✅ done |
+| M10 | Multi-source input XML tagging (`<user_message>`/`<attachment>`/`<stdin>` + data-not-instructions system declaration); blank line before compare/council section headers | ✅ done |
 | M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout) | ✅ done |
 
 ## Community
