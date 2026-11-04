@@ -135,9 +135,10 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M6 | bilingual UI (zh/en) via locale/`BRAIN_LANG`/UTC+8 timezone detection; README in both languages | ✅ done |
 | M7 | `brain compare` parallel independent sampling (alias = model-group shortcut, no per-leg failover, any leg OK → exit 0) / `--blind` anonymous review | ✅ done |
 | M8 | `--extra-body` / `--extra-headers` generic passthrough (top-level JSON assign, reserved-key rejection, `@file`, visible in `--dry-run`) | ✅ done |
-| M9 | `brain council` serial debate (blind-parallel round 1 + snake-serial rounds, lens-as-context, absence dropout, sunk-cost protection) | ✅ done |
+| M9 | `brain council` serial debate (blind-parallel round 1 + snake-serial rounds, lens-as-context, absence dropout, sunk-cost protection); v0.10.x additions: `--order snake/rotate/fixed` speaking-order strategies, rounds short flag `-C`→`-r` (breaking) | ✅ done |
 | M10 | Multi-source input XML tagging (`<user_message>`/`<attachment>`/`<stdin>` + data-not-instructions system declaration); blank line before compare/council section headers | ✅ done |
 | M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout) | ✅ done |
+| — (parallel track) | Installer & distribution (v0.10.1–v0.10.6, tracked in DESIGN §5 not as milestones): Windows Git Bash native support; layout-detecting in-place upgrade + SKILL.md/installer shipped from release tarballs; atomic installer self-update + sh guard; `--uninstall`; command-tree cleanup (registration order, completion removed, bilingual help, v0.10.2) | ✅ done |
 
 ## Community
 

@@ -132,9 +132,10 @@ brain draw -i cat.jpg "把帽子换成红色"               # 参考图 → 编�
 | M6 | 界面双语（zh/en）：locale / `BRAIN_LANG` / UTC+8 时区检测；README 中英双语 | ✅ 完成 |
 | M7 | `brain compare` 并行独立采样（别名=模型组快捷方式、每腿无故障转移、≥1 成功即 exit 0）/ `--blind` 匿名盲测 | ✅ 完成 |
 | M8 | `--extra-body` / `--extra-headers` 通用透传口（JSON 顶层 assign、保留字拒绝、`@file`、`--dry-run` 可见） | ✅ 完成 |
-| M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护） | ✅ 完成 |
+| M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护）；v0.10.x 增补：`--order snake/rotate/fixed` 发言顺序策略、轮次短旗标 `-C`→`-r`（breaking） | ✅ 完成 |
 | M10 | 多来源输入 XML 区隔（`<user_message>`/`<attachment>`/`<stdin>` 标签 + 数据非指令 system 声明）；compare/council 分隔头前双空行 | ✅ 完成 |
 | M11 | `brain draw` 图像生成（双协议 Gemini 原生 / OpenAI Images 按名推断 + `draw.type` 覆盖、draw 配置段兜底顶层、`--aspect`/`--res` 统一语义、`-i` 参考图、自动落盘 + stdout 路径） | ✅ 完成 |
+| —（并行轨道） | 安装器与分发（v0.10.1–v0.10.6，台账在 DESIGN §5 非里程碑）：Windows Git Bash 原生适配；智能升级 + SKILL.md/安装器随包同步；安装器原子自更新 + sh 守卫；`--uninstall` 卸载；命令树整理（注册序、移除 completion、双语 help，v0.10.2） | ✅ 完成 |
 
 ## 友情社区
 
