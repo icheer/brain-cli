@@ -16,10 +16,10 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 
 | # | 旅程 | 变体 | 验证方式 | 状态 | 最近验证 |
 | --- | --- | --- | --- | --- | --- |
-| J1 | 全新 Linux/macOS：install.sh → `--version` → ping 报配置缺失并给修复指引 → init → ask 首问成功 | live | 发版冒烟（本地 .env 联调） | ✅ | v0.11.2 |
+| J1 | 全新 Linux/macOS：install.sh → `--version` → ping 报配置缺失并给修复指引 → init → ask 首问成功 | live | 发版冒烟（本地 .env 联调） | ✅ | v0.11.3 |
 | J2 | 全新 Windows Git Bash：同 J1，装 brain.exe、全局 ~/bin、PATH 提示 | dry + live 实机 | 模拟 MINGW 环境（fake uname/curl）+ 用户实机 | ⚠️ 实机止于 v0.10.1，此后仅模拟 | v0.10.5 (dry) |
-| J3 | 存量升级裸跑：四种安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）自动检测、按同模式升级 | live | 发版后本地安装器冒烟（软链形态）；其余形态开发期实测 | ⚠️ 仅软链形态随发版回归 | v0.11.2 |
-| J4 | 升级三方同版本：binary / SKILL.md / install.sh 与 Release 一致 | live | 发版后核对三者版本一致 | ✅ | v0.11.2 |
+| J3 | 存量升级裸跑：四种安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）自动检测、按同模式升级 | live | 发版后本地安装器冒烟（软链形态）；其余形态开发期实测 | ⚠️ 仅软链形态随发版回归 | v0.11.3 |
+| J4 | 升级三方同版本：binary / SKILL.md / install.sh 与 Release 一致 | live | 发版后核对三者版本一致 | ✅ | v0.11.3 |
 | J5 | `sh install.sh`（dash 环境）：一行明确指引退出，不抛 Illegal option | dry | dash 显式调用 | ✅ | v0.10.5 |
 | J6 | 旧版环境 wget 最新 install.sh 手动复制一次，此后进入自动升级轨道 | live | 用户 0.10.2 VPS 实操 | ✅ | v0.10.5 |
 | J19 | 卸载：四形态逐一反向拆除 + 空环境幂等 + 悬空软链 + 互斥参数拒绝 | dry | 沙盒矩阵（BRAIN_INSTALL_DIR/BRAIN_GLOBAL_BIN 重定向） | ✅ | v0.10.6 |
@@ -36,7 +36,7 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 
 | # | 旅程 | 变体 | 验证方式 | 状态 | 最近验证 |
 | --- | --- | --- | --- | --- | --- |
-| J10 | 多来源输入：管道 + `-f` + `-i` 共存 → XML 区隔正确（附件 id 序号按 `-f` 顺序、保留字标签在附件/stdin/发言内容中已转义、问题里标签字面量不误触发声明），`--dry-run` 可核对标签结构 | dry | `--dry-run` 输出 messages 检查 | ✅ | 开发期 |
+| J10 | 多来源输入：管道 + `-f` + `-i` 共存 → XML 区隔正确（附件 id 序号按 `-f` 顺序、保留字标签在附件/stdin/发言内容中已转义、问题里标签字面量不误触发声明），`--dry-run` 可核对标签结构 | dry | `--dry-run` 输出 messages 检查（开发构建 + 已发布二进制双跑） | ✅ | v0.11.3 |
 | J11 | `--json` 恒定单对象：成功 / 失败两形态 jq 均可直接解析，error.code = 退出码 | dry + live | 成功与构造失败各一次 | ✅ | 开发期 |
 | J12 | 长推理不中断：>60s 请求心跳正常、SSE 保活、重试吃同一总预算 | live | 真网关长推理（one-api 系脏网关） | ✅ | 开发期 |
 
