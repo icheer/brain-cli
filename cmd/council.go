@@ -270,6 +270,8 @@ func councilInstruction(seat string, round, rounds int, lang councilLang) string
 // 发言记录以语言中立的 XML 标签区隔（<transcript>/<speech seat round>，缺席自闭合
 // status="absent"）——闭合标签是强「块结束」锚点，跨厂商模型均内化理解嵌套；
 // 动态指令永远收尾（第 0 节：严格前缀追加，命中网关 prompt caching）。
+// 发言内容是不可信文本（模型回复可能复读 </speech> 等标签），嵌入前保留字转义
+// （app.EscapeStructural），防止发言伪造/破坏记录块边界。
 func councilTranscriptPart(seat string, round, rounds int, transcript []councilSpeech, lang councilLang) gateway.ContentPart {
 	var b strings.Builder
 	if len(transcript) > 0 {
@@ -277,7 +279,7 @@ func councilTranscriptPart(seat string, round, rounds int, transcript []councilS
 		for _, sp := range transcript {
 			if sp.OK {
 				b.WriteString(fmt.Sprintf("<speech seat=%q round=%q>\n%s\n</speech>\n",
-					sp.Model, strconv.Itoa(sp.Round), strings.TrimSpace(sp.Content)))
+					sp.Model, strconv.Itoa(sp.Round), app.EscapeStructural(strings.TrimSpace(sp.Content))))
 			} else {
 				b.WriteString(fmt.Sprintf("<speech seat=%q round=%q status=\"absent\" />\n", sp.Model, strconv.Itoa(sp.Round)))
 			}

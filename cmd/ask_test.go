@@ -170,7 +170,7 @@ func TestAskFileSeparator(t *testing.T) {
 	if code != 0 {
 		t.Fatal("code != 0")
 	}
-	if want := "<attachment path=\"" + p + "\">\npackage main\n</attachment>"; !strings.Contains(userTextPart(t, *body), want) {
+	if want := "<attachment id=1 path=\"" + p + "\">\npackage main\n</attachment>"; !strings.Contains(userTextPart(t, *body), want) {
 		t.Fatalf("分隔头不符: %q", userTextPart(t, *body))
 	}
 }
@@ -396,5 +396,17 @@ func TestAskDataTagDeclaration(t *testing.T) {
 	msgs, _ = (*body)["messages"].([]any)
 	if m0, _ := msgs[0].(map[string]any); m0["role"] == "system" {
 		t.Fatalf("单问题不应有 system: %v", m0)
+	}
+
+	// 2026-11-11：问题正文里出现标签字面量（咨询 brain 自身格式等场景）不误触发
+	// 声明——判定依据 Assemble 的结构标志而非扫描正文（旧实现此处会误注入）
+	askOpts = askOptions{}
+	code, _, _ = runBrain("ask", "-m", "fast", "什么是 <attachment> 与 <stdin> 标签")
+	if code != 0 {
+		t.Fatal("code != 0")
+	}
+	msgs, _ = (*body)["messages"].([]any)
+	if m0, _ := msgs[0].(map[string]any); m0["role"] == "system" {
+		t.Fatalf("问题里的标签字面量不应触发声明 system: %v", m0)
 	}
 }
