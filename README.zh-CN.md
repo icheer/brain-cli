@@ -119,7 +119,7 @@ brain draw -i cat.jpg "把帽子换成红色"               # 参考图 → 编�
 
 ## 状态与路线
 
-**:rocket: v0.11.2 已发布**（M0–M11）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.11.3 已发布**（M0–M11）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -133,7 +133,7 @@ brain draw -i cat.jpg "把帽子换成红色"               # 参考图 → 编�
 | M7 | `brain compare` 并行独立采样（别名=模型组快捷方式、每腿无故障转移、≥1 成功即 exit 0）/ `--blind` 匿名盲测 | ✅ 完成 |
 | M8 | `--extra-body` / `--extra-headers` 通用透传口（JSON 顶层 assign、保留字拒绝、`@file`、`--dry-run` 可见） | ✅ 完成 |
 | M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护）；v0.10.x 增补：`--order snake/rotate/fixed` 发言顺序策略、轮次短旗标 `-C`→`-r`（breaking） | ✅ 完成 |
-| M10 | 多来源输入 XML 区隔（`<user_message>`/`<attachment>`/`<stdin>` 标签 + 数据非指令 system 声明）；安装器线：Windows Git Bash 原生适配、形态检测就地升级 + SKILL.md/安装器随包同步、`--uninstall` 卸载 | ✅ 完成 |
+| M10 | 多来源输入 XML 区隔（`<user_message>`/`<attachment>`/`<stdin>` 标签 + 数据非指令 system 声明）；安装器线：Windows Git Bash 原生适配、形态检测就地升级 + SKILL.md/安装器随包同步、`--uninstall` 卸载；v0.11.3 增补：不可信内容保留字转义（杜绝伪造标签边界/假发言记录）、`<attachment id>` 序号援引 | ✅ 完成 |
 | M11 | `brain draw` 图像生成（双协议 Gemini 原生 / OpenAI Images 按名推断 + `draw.type` 覆盖、draw 配置段兜底顶层、`--aspect`/`--res` 统一语义、`-i` 参考图、自动落盘 + stdout 路径） | ✅ 完成 |
 
 ## 友情社区
