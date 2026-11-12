@@ -16,10 +16,10 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 
 | # | 旅程 | 变体 | 验证方式 | 状态 | 最近验证 |
 | --- | --- | --- | --- | --- | --- |
-| J1 | 全新 Linux/macOS：install.sh → `--version` → ping 报配置缺失并给修复指引 → init → ask 首问成功 | live | 发版冒烟（本地 .env 联调） | ✅ | v0.12.0 |
+| J1 | 全新 Linux/macOS：install.sh → `--version` → ping 报配置缺失并给修复指引 → init → ask 首问成功 | live | 发版冒烟（本地 .env 联调） | ✅ | v0.12.1 |
 | J2 | 全新 Windows Git Bash：同 J1，装 brain.exe、全局 ~/bin、PATH 提示 | dry + live 实机 | 模拟 MINGW 环境（fake uname/curl）+ 用户实机 | ⚠️ 实机止于 v0.10.1，此后仅模拟 | v0.10.5 (dry) |
-| J3 | 存量升级裸跑：四种安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）自动检测、按同模式升级 | live | 发版后本地安装器冒烟（软链形态）；其余形态开发期实测 | ⚠️ 仅软链形态随发版回归 | v0.12.0 |
-| J4 | 升级三方同版本：binary / SKILL.md / install.sh 与 Release 一致 | live | 发版后核对三者版本一致 | ✅ | v0.12.0 |
+| J3 | 存量升级裸跑：四种安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）自动检测、按同模式升级 | live | 发版后本地安装器冒烟（软链形态）；其余形态开发期实测 | ⚠️ 仅软链形态随发版回归 | v0.12.1 |
+| J4 | 升级三方同版本：binary / SKILL.md / install.sh 与 Release 一致 | live | 发版后核对三者版本一致 | ✅ | v0.12.1 |
 | J5 | `sh install.sh`（dash 环境）：一行明确指引退出，不抛 Illegal option | dry | dash 显式调用 | ✅ | v0.10.5 |
 | J6 | 旧版环境 wget 最新 install.sh 手动复制一次，此后进入自动升级轨道 | live | 用户 0.10.2 VPS 实操 | ✅ | v0.10.5 |
 | J19 | 卸载：四形态逐一反向拆除 + 空环境幂等 + 悬空软链 + 互斥参数拒绝 | dry | 沙盒矩阵（BRAIN_INSTALL_DIR/BRAIN_GLOBAL_BIN 重定向） | ✅ | v0.10.6 |
