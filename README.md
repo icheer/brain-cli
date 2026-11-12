@@ -123,7 +123,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 ## Status & roadmap
 
-**:rocket: v0.11.3 released** (M0–M11) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
+**:rocket: v0.11.4 released** (M0–M11) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
@@ -138,7 +138,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M8 | `--extra-body` / `--extra-headers` generic passthrough (top-level JSON assign, reserved-key rejection, `@file`, visible in `--dry-run`) | ✅ done |
 | M9 | `brain council` serial debate (blind-parallel round 1 + snake-serial rounds, lens-as-context, absence dropout, sunk-cost protection); v0.10.x additions: `--order snake/rotate/fixed` speaking-order strategies, rounds short flag `-C`→`-r` (breaking) | ✅ done |
 | M10 | Multi-source input XML tagging (`<user_message>`/`<attachment>`/`<stdin>` + data-not-instructions system declaration); installer track: Windows Git Bash native support, layout-detecting in-place upgrade with SKILL.md/installer shipped from release tarballs, `--uninstall`; v0.11.3 additions: reserved-tag escaping in untrusted content (spoofed block boundaries / fabricated speeches impossible), `<attachment id>` sequence for citation | ✅ done |
-| M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout) | ✅ done |
+| M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout); v0.11.4 additions: `--extra-body`/`--extra-headers` passthrough (top-level on openai, into imageConfig on gemini — grok-style private params) | ✅ done |
 
 ## Community
 
