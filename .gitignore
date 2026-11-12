@@ -30,3 +30,6 @@ dist/
 
 # 调查研究语料（brain judge 预研等，本地语料不上传）
 research/
+
+# 本地技能目录（context-dev 等，个人环境不共享）
+.claude/
