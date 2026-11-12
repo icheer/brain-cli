@@ -3,11 +3,13 @@ package cmd
 import (
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -434,5 +436,100 @@ func TestInitDrawInvalidTypeFallsBack(t *testing.T) {
 	data, _ := os.ReadFile(cfgPath)
 	if strings.Contains(string(data), "foo") {
 		t.Fatalf("非法 type 应清空（按模型名推断）:\n%s", data)
+	}
+}
+
+// ---- extras（--extra-body/--extra-headers，2026-11-12）----
+
+// recordingDrawGateway 记录最近一次请求 body 的假生图网关。
+func recordingDrawGateway(t *testing.T) (*httptest.Server, *[]byte) {
+	t.Helper()
+	var mu sync.Mutex
+	var body []byte
+	b64 := base64.StdEncoding.EncodeToString(drawPNG)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		body, _ = io.ReadAll(r.Body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"b64_json":"` + b64 + `"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &body
+}
+
+func TestDrawExtraBodyEndToEnd(t *testing.T) {
+	srv, body := recordingDrawGateway(t)
+	setupDrawConfig(t, srv.URL, "grok-imagine-image-2.0", "openai")
+	t.Chdir(t.TempDir()) // 成功路径会落盘，隔离到临时目录
+
+	code, _, errStr := runBrain("draw", "--extra-body", `{"aspect_ratio":"16:9"}`, "garden")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(*body, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["aspect_ratio"] != "16:9" || m["n"] != float64(1) {
+		t.Errorf("extras 顶层并入失败: %v", m)
+	}
+}
+
+func TestDrawExtraBodyReserved(t *testing.T) {
+	srv := fakeDrawGateway(t, 0)
+	setupDrawConfig(t, srv.URL, "gpt-image-x", "openai")
+
+	// openai 保留字（顶层生命线字段）
+	code, _, errStr := runBrain("draw", "--extra-body", `{"size":"1024x1024"}`, "x")
+	if code != 1 || !strings.Contains(errStr, "保留字") || !strings.Contains(errStr, "--aspect") {
+		t.Fatalf("openai 保留字应 exit 1 且给替代路径: code=%d stderr=%s", code, errStr)
+	}
+	// gemini 保留字（imageConfig 子字段；大小写不敏感）
+	setupDrawConfig(t, srv.URL, "gemini-3.1-flash-image", "")
+	code, _, errStr = runBrain("draw", "--extra-body", `{"AspectRatio":"16:9"}`, "x")
+	if code != 1 || !strings.Contains(errStr, "保留字") {
+		t.Fatalf("gemini 保留字应 exit 1: code=%d stderr=%s", code, errStr)
+	}
+	// gemini 的 aspect_ratio 风格键不是保留字（openai 才有）——放行到装配层
+	drawOpts = drawOptions{aspect: "auto", res: "auto"} // cobra flag 跨 runBrain 残留（extra-body 数组会累加）
+	code, _, errStr = runBrain("draw", "--dry-run", "--extra-body", `{"aspect_ratio":"16:9"}`, "x")
+	if code != 0 {
+		t.Fatalf("gemini aspect_ratio 应放行: code=%d stderr=%s", code, errStr)
+	}
+}
+
+func TestDrawExtraHeadersValidation(t *testing.T) {
+	srv := fakeDrawGateway(t, 0)
+	setupDrawConfig(t, srv.URL, "gpt-image-x", "openai")
+
+	code, _, errStr := runBrain("draw", "--extra-headers", `{"X-Tenant":1}`, "x")
+	if code != 1 || !strings.Contains(errStr, "字符串") {
+		t.Fatalf("非字符串头值应 exit 1: code=%d stderr=%s", code, errStr)
+	}
+	code, _, errStr = runBrain("draw", "--extra-headers", `{"x-goog-api-key":"k2"}`, "x")
+	if code != 1 || !strings.Contains(errStr, "保留字") {
+		t.Fatalf("x-goog-api-key 应保留拒绝: code=%d stderr=%s", code, errStr)
+	}
+}
+
+func TestDrawDryRunShowsExtras(t *testing.T) {
+	srv := fakeDrawGateway(t, 0)
+	setupDrawConfig(t, srv.URL, "gpt-image-x", "openai")
+
+	code, out, errStr := runBrain("draw", "--dry-run",
+		"--extra-body", `{"aspect_ratio":"16:9"}`, "--extra-headers", `{"X-Tenant":"a"}`, "x")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	var payload struct {
+		ExtraBody    map[string]any    `json:"extra_body"`
+		ExtraHeaders map[string]string `json:"extra_headers"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.ExtraBody["aspect_ratio"] != "16:9" || payload.ExtraHeaders["X-Tenant"] != "a" {
+		t.Errorf("dry-run 应展示 extras: %s", out)
 	}
 }

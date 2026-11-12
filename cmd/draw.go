@@ -26,14 +26,16 @@ import (
 )
 
 type drawOptions struct {
-	model   string
-	images  []string
-	aspect  string
-	res     string
-	timeout int
-	quiet   bool
-	jsonOut bool
-	dryRun  bool
+	model        string
+	images       []string
+	aspect       string
+	res          string
+	timeout      int
+	quiet        bool
+	jsonOut      bool
+	dryRun       bool
+	extraBody    []string
+	extraHeaders []string
 }
 
 var drawOpts drawOptions
@@ -61,6 +63,10 @@ var drawCmd = &cobra.Command{
   aspect: auto|1:1|16:9|9:16|4:3|3:4|3:2|2:3|5:4|4:5|21:9
           （openai 映射为 size 桶 1024x1024/1536x1024/1024x1536，gemini 直传 aspectRatio）
   res:    auto|1K|2K|4K（openai 映射为 quality low/medium/high，gemini 直传 imageSize）
+
+--extra-body 透传协议私有参数（与 ask 同构的逃生口）：openai → 请求体顶层
+（如 grok 的 {"aspect_ratio":"16:9"}），gemini → 合并进 generationConfig.imageConfig；
+保留字 model/prompt/n/size/quality/image（openai）、aspectRatio/imageSize（gemini）。
 
 输出：图片自动落盘（优先当前目录，不可写退系统临时目录），stdout 只打印保存路径
 一行；--json 时为恒定单对象（saved_path/mime/usage/latency/error 与 ask --json 同构）。
@@ -91,6 +97,11 @@ inlineData, openai -> switches to /v1/images/edits).
   res:    auto|1K|2K|4K (openai maps to quality low/medium/high; gemini passes
           through as imageSize)
 
+--extra-body passes protocol-specific params through (same escape hatch as ask):
+openai -> request top level (e.g. grok's {"aspect_ratio":"16:9"}); gemini ->
+merged into generationConfig.imageConfig. Reserved keys: model/prompt/n/size/
+quality/image (openai), aspectRatio/imageSize (gemini).
+
 Output: the image is auto-saved (cwd first, system temp dir as fallback) and
 stdout prints exactly the saved path; with --json a single constant object is
 emitted instead (saved_path/mime/usage/latency/error shaped like ask --json).
@@ -118,6 +129,20 @@ func init() {
 		i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
 	drawCmd.Flags().BoolVar(&drawOpts.dryRun, "dry-run", false,
 		i18n.T("输出最终请求形状（单行 JSON），不发请求不花钱", "print the final request shape (single-line JSON); no request, no cost"))
+	drawCmd.Flags().StringArrayVar(&drawOpts.extraBody, "extra-body", nil, drawExtraBodyFlagsHelp())
+	drawCmd.Flags().StringArrayVar(&drawOpts.extraHeaders, "extra-headers", nil, drawExtraHeadersFlagsHelp())
+}
+
+// drawExtraBodyFlagsHelp / drawExtraHeadersFlagsHelp：与 chat 同构的透传口，
+// 帮助文案写明落点方言（openai 顶层 / gemini imageConfig）。
+func drawExtraBodyFlagsHelp() string {
+	return i18n.T("附加生图参数：JSON 对象（内联或 @file），可重复有序合并；openai → 请求体顶层透传（如 grok 的 {\"aspect_ratio\":\"16:9\"}），gemini → 合并进 generationConfig.imageConfig；保留字 openai: model/prompt/n/size/quality/image、gemini: aspectRatio/imageSize（用 --aspect/--res）",
+		"extra image params: a JSON object (inline or @file), repeatable and merged in order; openai -> passes through at the request top level (e.g. grok's {\"aspect_ratio\":\"16:9\"}), gemini -> merged into generationConfig.imageConfig; reserved keys openai: model/prompt/n/size/quality/image, gemini: aspectRatio/imageSize (use --aspect/--res)")
+}
+
+func drawExtraHeadersFlagsHelp() string {
+	return i18n.T("附加 HTTP 请求头：JSON 对象（内联或 @file），值须为字符串；默认头之后应用，同名覆盖；保留字 Authorization/Content-Type/Accept/x-goog-api-key 被拒绝",
+		"extra HTTP headers: a JSON object (inline or @file) with string values; applied after brain's default headers, overriding same-named ones; reserved keys Authorization/Content-Type/Accept/x-goog-api-key are rejected")
 }
 
 // drawJSON 是 draw --json 的输出结构（成败恒定一个对象，与 ask --json 同构）。
@@ -232,6 +257,17 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 				"missing api_key; fix: brain config set draw.api_key <sk-...> (falls back to top-level api_key)"))
 	}
 
+	// ---- extras：--extra-body/--extra-headers 透传口（保留字按协议方言，见 extras.go） ----
+	var extraBody map[string]any
+	var extraHeaders map[string]string
+	if len(drawOpts.extraBody) > 0 || len(drawOpts.extraHeaders) > 0 {
+		var exErr error
+		extraBody, extraHeaders, exErr = parseDrawExtras(typ, drawOpts.extraBody, drawOpts.extraHeaders)
+		if exErr != nil {
+			return exitcode.Fail(stderr, exitcode.Usage, "%v", exErr)
+		}
+	}
+
 	// ---- 参数校验（统一语义，方言翻译在各 adapter） ----
 	aspect := drawOpts.aspect
 	if aspect != "auto" {
@@ -287,7 +323,8 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 		refs = append(refs, draw.RefImage{MIME: mime, Data: data, Name: filepath.Base(spec)})
 	}
 
-	req := &draw.Request{Model: model, Prompt: prompt, Aspect: aspect, Res: res, Refs: refs}
+	req := &draw.Request{Model: model, Prompt: prompt, Aspect: aspect, Res: res, Refs: refs,
+		ExtraBody: extraBody, ExtraHeaders: extraHeaders}
 	client := draw.New(baseURL, apiKey, typ, time.Duration(cfg.TimeoutSeconds)*time.Second)
 	payload.Model, payload.Requested, payload.Type = model, name, typ
 
@@ -296,6 +333,7 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 		out, _ := json.Marshal(drawDryRun{
 			Requested: name, Model: model, Type: typ, Endpoint: client.Endpoint(req),
 			Params: translateParams(typ, aspect, res), Prompt: prompt, Refs: refSummaries(refs),
+			ExtraBody: extraBody, ExtraHeaders: extraHeaders,
 		})
 		fmt.Fprintln(stdout, string(out))
 		return nil
@@ -399,13 +437,15 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 // ---- dry-run 输出 ----
 
 type drawDryRun struct {
-	Requested string            `json:"requested_model"`
-	Model     string            `json:"model"`
-	Type      string            `json:"type"`
-	Endpoint  string            `json:"endpoint"` // 不含鉴权参数
-	Params    map[string]string `json:"params"`
-	Prompt    string            `json:"prompt"`
-	Refs      []draw.RefSummary `json:"refs,omitempty"`
+	Requested    string            `json:"requested_model"`
+	Model        string            `json:"model"`
+	Type         string            `json:"type"`
+	Endpoint     string            `json:"endpoint"` // 不含鉴权参数
+	Params       map[string]string `json:"params"`
+	Prompt       string            `json:"prompt"`
+	Refs         []draw.RefSummary `json:"refs,omitempty"`
+	ExtraBody    map[string]any    `json:"extra_body,omitempty"`    // 透传参数（落点：openai 顶层 / gemini imageConfig）
+	ExtraHeaders map[string]string `json:"extra_headers,omitempty"` // 附加头（默认头之后应用）
 }
 
 // translateParams 把统一语义翻成目标协议的实际参数（dry-run 可核对翻译结果）。

@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -113,6 +114,12 @@ type Request struct {
 	Aspect string // auto | 1:1 | 16:9 | …
 	Res    string // auto | 1K | 2K | 4K
 	Refs   []RefImage
+	// ExtraBody --extra-body 的透传参数（cmd 层已做保留字拒绝）。落点按协议方言：
+	// openai → 请求体顶层 assign（grok 的 aspect_ratio 等私有参数走这里）；
+	// gemini → 合并进 generationConfig.imageConfig（顶层是 contents/generationConfig
+	// 结构，顶层 assign 会撞坏结构）。ExtraHeaders 附加 HTTP 头（默认头之后应用）。
+	ExtraBody    map[string]any
+	ExtraHeaders map[string]string
 }
 
 // Usage 归一后的用量（两协议字段名不同：openai input_tokens / gemini promptTokenCount）。
@@ -240,6 +247,18 @@ func (c *Client) openai(ctx context.Context, req *Request) (*Result, error) {
 		} {
 			_ = w.WriteField(k, v)
 		}
+		// extras 以表单字段并入（键序确定，golden 可断言）：字符串原样，
+		// 其余类型 JSON 编码为字符串（网关侧按 JSON 字段解析）
+		for _, k := range sortedKeys(req.ExtraBody) {
+			v := req.ExtraBody[k]
+			if s, ok := v.(string); ok {
+				_ = w.WriteField(k, s)
+				continue
+			}
+			if b, merr := json.Marshal(v); merr == nil {
+				_ = w.WriteField(k, string(b))
+			}
+		}
 		for _, r := range req.Refs {
 			fw, err := w.CreateFormFile("image[]", r.Name)
 			if err != nil {
@@ -256,17 +275,21 @@ func (c *Client) openai(ctx context.Context, req *Request) (*Result, error) {
 	} else {
 		// n 必须是 JSON 数字而非字符串——OpenAI 规范如此，且 Go 实现的网关（new-api 系）
 		// 把 n 解析成 uint，收到 "1" 直接 400（v0.11.0 实弹事故：cannot unmarshal string
-		// into Go struct field Alias.n of type uint）
-		b, err := json.Marshal(map[string]any{
+		// into Go struct field Alias.n of type uint）。extras 顶层 assign（同 map 覆盖式合并）
+		bm := map[string]any{
 			"model": req.Model, "prompt": req.Prompt, "n": 1, "size": size, "quality": quality,
-		})
+		}
+		for k, v := range req.ExtraBody {
+			bm[k] = v
+		}
+		b, err := json.Marshal(bm)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", i18n.T("序列化请求失败", "failed to marshal request"), err)
 		}
 		contentType, body = "application/json", bytes.NewReader(b)
 	}
 
-	data, err := c.post(ctx, endpoint, contentType, body, map[string]string{"Authorization": "Bearer " + c.APIKey})
+	data, err := c.post(ctx, endpoint, contentType, body, map[string]string{"Authorization": "Bearer " + c.APIKey}, req.ExtraHeaders)
 	if err != nil {
 		return nil, err
 	}
@@ -372,6 +395,11 @@ func (c *Client) gemini(ctx context.Context, req *Request) (*Result, error) {
 	if req.Aspect != "auto" {
 		imageCfg["aspectRatio"] = req.Aspect
 	}
+	// extras 合并进 imageConfig（gemini 顶层是 contents/generationConfig 结构，
+	// 顶层 assign 会撞坏结构；aspectRatio/imageSize 保留字已在 cmd 层拒绝）
+	for k, v := range req.ExtraBody {
+		imageCfg[k] = v
+	}
 	if len(imageCfg) > 0 {
 		genCfg["imageConfig"] = imageCfg
 	}
@@ -387,7 +415,7 @@ func (c *Client) gemini(ctx context.Context, req *Request) (*Result, error) {
 	// 同值并存两端皆收；query 里的 key 绝不出现在任何错误/展示输出中（Endpoint 不含它）。
 	endpoint := c.Endpoint(req) + "?key=" + url.QueryEscape(c.APIKey)
 	data, err := c.post(ctx, endpoint, "application/json", bytes.NewReader(body),
-		map[string]string{"x-goog-api-key": c.APIKey})
+		map[string]string{"x-goog-api-key": c.APIKey}, req.ExtraHeaders)
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +489,8 @@ func (c *Client) gemini(ctx context.Context, req *Request) (*Result, error) {
 
 // post 发送请求并归一错误（非 2xx → StatusError，携网关错误体片段；
 // 传输超时 → TimeoutError；gemini 错误体优先取其自报 code）。
-func (c *Client) post(ctx context.Context, endpoint, contentType string, body io.Reader, headers map[string]string) ([]byte, error) {
+// extraHeaders 在默认头与协议头之后应用，同名覆盖（与 chat 侧 extras 约定一致）。
+func (c *Client) post(ctx context.Context, endpoint, contentType string, body io.Reader, headers, extraHeaders map[string]string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", i18n.T("构造请求失败", "failed to build request"), err)
@@ -470,6 +499,9 @@ func (c *Client) post(ctx context.Context, endpoint, contentType string, body io
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", contentType)
 	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
 	}
 	resp, err := c.HTTP.Do(req)
@@ -587,4 +619,14 @@ func nonzero(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// sortedKeys extras 并入 multipart 表单时的确定键序（map 遍历随机，golden 不可断言）。
+func sortedKeys(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }

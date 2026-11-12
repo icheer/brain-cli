@@ -415,3 +415,96 @@ func TestTimeout(t *testing.T) {
 		t.Errorf("timeout → %v", err)
 	}
 }
+
+// ---- extras（--extra-body/--extra-headers，2026-11-12）----
+
+// openai generations：extras 顶层 assign（grok 的 aspect_ratio 走这里），
+// n 保持 JSON 数字；extra headers 在默认头之后应用。
+func TestOpenAIExtraBodyTopLevel(t *testing.T) {
+	resp := `{"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString(tinyPNG) + `"}]}`
+	srv, cap := recordingServer(t, 200, resp)
+
+	c := New(srv.URL, "k", TypeOpenAI, 5*time.Second)
+	_, err := c.Generate(context.Background(), &Request{
+		Model: "grok-imagine-image-2.0", Prompt: "garden",
+		ExtraBody:    map[string]any{"aspect_ratio": "16:9", "response_format": "url"},
+		ExtraHeaders: map[string]string{"X-Tenant": "a"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(cap.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["aspect_ratio"] != "16:9" || body["response_format"] != "url" {
+		t.Errorf("extras 未顶层并入: %v", body)
+	}
+	if body["n"] != float64(1) { // 勿回退：n 必须保持 JSON 数字（v0.11.0 事故）
+		t.Errorf("n=%#v", body["n"])
+	}
+	if body["size"] != "auto" || body["quality"] != "auto" {
+		t.Errorf("默认参数应保留: %v", body)
+	}
+	if cap.Header.Get("X-Tenant") != "a" {
+		t.Errorf("extra header 未生效: %v", cap.Header)
+	}
+}
+
+// openai edits（multipart）：extras 以表单字段并入，字符串原样、对象 JSON 编码，键序确定。
+func TestOpenAIEditsExtraBodyFormFields(t *testing.T) {
+	resp := `{"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString(tinyPNG) + `"}]}`
+	srv, cap := recordingServer(t, 200, resp)
+
+	c := New(srv.URL, "k", TypeOpenAI, 5*time.Second)
+	_, err := c.Generate(context.Background(), &Request{
+		Model: "gpt-image-x", Prompt: "edit", Refs: []RefImage{{MIME: "image/png", Data: tinyPNG, Name: "r.png"}},
+		ExtraBody: map[string]any{"aspect_ratio": "16:9", "watermark": map[string]any{"enabled": false}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := http.NewRequest(http.MethodPost, "/", bytes.NewReader(cap.Body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Header.Set("Content-Type", cap.Header.Get("Content-Type"))
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		t.Fatalf("multipart 解析失败: %v", err)
+	}
+	if got := r.FormValue("aspect_ratio"); got != "16:9" {
+		t.Errorf("aspect_ratio=%q", got)
+	}
+	if got := r.FormValue("watermark"); got != `{"enabled":false}` {
+		t.Errorf("对象应 JSON 编码: %q", got)
+	}
+	if got := r.FormValue("model"); got != "gpt-image-x" {
+		t.Errorf("model=%q", got)
+	}
+}
+
+// gemini：extras 合并进 generationConfig.imageConfig（不是顶层）。
+func TestGeminiExtraBodyIntoImageConfig(t *testing.T) {
+	resp := `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"` + base64.StdEncoding.EncodeToString(tinyPNG) + `"}}]}}]}`
+	srv, cap := recordingServer(t, 200, resp)
+
+	c := New(srv.URL, "k", TypeGemini, 5*time.Second)
+	_, err := c.Generate(context.Background(), &Request{
+		Model: "gemini-3.1-flash-image", Prompt: "cat", Aspect: "16:9",
+		ExtraBody: map[string]any{"foo": "bar"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		GenerationConfig struct {
+			ImageConfig map[string]any `json:"imageConfig"`
+		} `json:"generationConfig"`
+	}
+	if err := json.Unmarshal(cap.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.GenerationConfig.ImageConfig["aspectRatio"] != "16:9" || body.GenerationConfig.ImageConfig["foo"] != "bar" {
+		t.Errorf("extras 应并入 imageConfig: %v", body.GenerationConfig.ImageConfig)
+	}
+}

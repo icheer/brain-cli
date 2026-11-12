@@ -47,7 +47,7 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 | J13 | compare 并发：多腿 + `--blind` 匿名 + `--json` responses[] | live | 真网关 2 腿实弹 | ✅ | v0.10.x |
 | J14 | council 干跑：`--order` 三策略调度矩阵、透镜表展开（席位认领展开后模型 ID）、缺席/SIGINT 语义 | dry | 单测矩阵 + `--dry-run` | ✅ | v0.10.4 |
 | J15 | council 实弹小规模：2 席 2 轮，stdout 分隔头时间序、末轮自动收尾 | live | 真网关 | ✅ | v0.10.4 |
-| J20 | draw：无 draw 段 exit 7 指引 → dry-run 零网络 → live 1K/2K 文生图 + `-i` 参考图编辑 → `--json` 恒定单对象 → 退出码映射（401→2）；**双协议各自 live 至少一发**；`draw.type` 覆盖与 base_url 智能拼接抽查 | dry + live | httptest 矩阵 + 真实网关（gemini 原生 + openai images 双路径） | ✅ | v0.11.1 |
+| J20 | draw：无 draw 段 exit 7 指引 → dry-run 零网络 → live 1K/2K 文生图 + `-i` 参考图编辑 → `--json` 恒定单对象 → 退出码映射（401→2）；**双协议各自 live 至少一发**；`draw.type` 覆盖与 base_url 智能拼接抽查；`--extra-body` 透传（openai 顶层 / gemini imageConfig）与保留字拒绝抽查 | dry + live | httptest 矩阵 + 真实网关（gemini 原生 + openai images 双路径） | ✅ | 开发期 |
 
 ## 宿主集成（最重要的欠账区）
 

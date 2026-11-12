@@ -89,6 +89,13 @@ func applyFastLanePrecedence(extraBody map[string]any, effort string, maxTokens 
 // rejectReserved 保留字拒绝（键匹配大小写不敏感；HTTP 头名本就如此）。
 // 报错信息同时给出允许的替代路径，让调用方一次性改对。
 func rejectReserved(m map[string]any, reserved map[string]bool, which string) error {
+	return rejectReservedHint(m, reserved, which,
+		i18n.T("reasoning_effort/max_tokens 用 -e/--max-output-tokens，Authorization 用 api_key 配置",
+			"use -e/--max-output-tokens for reasoning_effort/max_tokens, and the api_key config for Authorization"))
+}
+
+// rejectReservedHint rejectReserved 的自定义提示版（draw 的替代路径与 chat 不同）。
+func rejectReservedHint(m map[string]any, reserved map[string]bool, which, hint string) error {
 	var hits []string
 	for k := range m {
 		if reserved[strings.ToLower(k)] {
@@ -104,9 +111,68 @@ func rejectReserved(m map[string]any, reserved map[string]bool, which string) er
 		allowed = append(allowed, k)
 	}
 	sort.Strings(allowed)
-	return &app.InputError{Msg: i18n.Tf("%s 含保留字（%s）——这些字段归 brain 专属机制管理: %s；reasoning_effort/max_tokens 用 -e/--max-output-tokens，Authorization 用 api_key 配置",
-		"%s contains reserved keys (%s) — these fields belong to brain's own mechanisms: %s; use -e/--max-output-tokens for reasoning_effort/max_tokens, and the api_key config for Authorization",
-		which, strings.Join(hits, ", "), strings.Join(allowed, "/"))}
+	return &app.InputError{Msg: i18n.Tf("%s 含保留字（%s）——这些字段归 brain 专属机制管理: %s；%s",
+		"%s contains reserved keys (%s) — these fields belong to brain's own mechanisms: %s; %s",
+		which, strings.Join(hits, ", "), strings.Join(allowed, "/"), hint)}
+}
+
+// ---- draw 的 extras（2026-11-12）：透传口与 chat 同构，保留字按协议方言分 ----
+
+// drawReservedBody 按协议的 --extra-body 保留字：openai 顶层生命线字段；
+// gemini 侧 extras 落点在 generationConfig.imageConfig，保留其两枚子字段。
+var (
+	drawReservedBodyOpenAI = map[string]bool{
+		"model": true, "prompt": true, "n": true, "size": true, "quality": true, "image": true,
+	}
+	drawReservedBodyGemini = map[string]bool{
+		"aspectratio": true, "imagesize": true,
+	}
+)
+
+// drawReservedHeaderKeys = chat 三件套 + gemini 的 key 头（key 只走 config/?key= 一条正道）。
+var drawReservedHeaderKeys = func() map[string]bool {
+	m := map[string]bool{"x-goog-api-key": true}
+	for k := range reservedHeaderKeys {
+		m[k] = true
+	}
+	return m
+}()
+
+// parseDrawExtras draw 版统一入口：解析 + 按协议保留字校验（typ 为已解析协议）。
+func parseDrawExtras(typ string, bodyVals, headerVals []string) (map[string]any, map[string]string, error) {
+	var body map[string]any
+	var headers map[string]string
+	var err error
+	if len(bodyVals) > 0 {
+		if body, err = parseExtrasJSON(bodyVals); err != nil {
+			return nil, nil, err
+		}
+		reserved := drawReservedBodyOpenAI
+		hint := i18n.T("尺寸/质量用 --aspect/--res 统一语义翻译，模型用 -m/draw.model",
+			"use --aspect/--res for size & quality; use -m/draw.model for the model")
+		if typ == "gemini" {
+			reserved = drawReservedBodyGemini
+			hint = i18n.T("aspectRatio/imageSize 用 --aspect/--res 统一语义翻译",
+				"use --aspect/--res for aspectRatio/imageSize")
+		}
+		if err = rejectReservedHint(body, reserved, "--extra-body", hint); err != nil {
+			return nil, nil, err
+		}
+	}
+	if len(headerVals) > 0 {
+		var raw map[string]any
+		if raw, err = parseExtrasJSON(headerVals); err != nil {
+			return nil, nil, err
+		}
+		if err = rejectReservedHint(raw, drawReservedHeaderKeys, "--extra-headers",
+			i18n.T("Authorization 用 api_key 配置", "use the api_key config for Authorization")); err != nil {
+			return nil, nil, err
+		}
+		if headers, err = parseExtraHeaders(headerVals); err != nil {
+			return nil, nil, err
+		}
+	}
+	return body, headers, nil
 }
 
 // parseExtraFlags 统一入口：解析 + 保留字校验，返回可挂载到 ChatRequest 的两个 map。
