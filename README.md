@@ -168,6 +168,10 @@ Asked at the China International Supply Chain Expo in Beijing that same month wh
 
 `brain compare` (same question, many models, in parallel) and `brain council` (serial cross-examination with a growing transcript) engineer exactly this into a single command — genuinely independent cross-vendor models, with the adjudication always yours.
 
+> The author also wishes to add a personal note of respect and support for Jensen Huang himself. From a table at a Denny's diner, he carried a gaming-graphics company to the center of the AI era; whatever storms swirl at the moment, the flaws do not dim the light — his engineer's honesty, his generosity to the developer community, and the respect and goodwill he showed China when he swapped his signature leather jacket for a Tang suit on a Beijing stage have always shone through. May he keep carrying AI toward empowerment for everyone.
+>
+> — icheer, Nov 2026
+
 ## Community
 
 - [LINUX DO (`linux.do`)](https://linux.do/) — Where possible begins.
