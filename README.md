@@ -34,7 +34,11 @@
 Install the brain skill for me: https://github.com/icheer/brain-cli
 ```
 
-The agent opens the repo and follows its instructions (the skill dir ships an install.sh; after installing the binary it runs `brain ping` to self-check). Without a gateway configured, `ping` fails with fix hints on stderr — at that point run `brain init` (interactive wizard) or `brain config set` **by yourself in your terminal**: your key is typed by you straight into a local 0600 file and never travels through the agent chat (conversation transcripts may be retained); avoid sending plaintext keys to the agent.
+The agent opens the repo and follows the steps below — this part is written for it:
+
+1. **Place the skill dir**: copy (or symlink) the repo's `skills/brain/` directory into the host's skill directory — Claude Code: `~/.claude/skills/brain` (user-level) or `.claude/skills/brain` inside a project; other hosts usually `.agents/skills/brain`
+2. **Install the binary**: run `bash install.sh` inside that directory — downloads the platform binary from Releases into the skill dir (SHA256-verified); append `--link` to also symlink it into `/usr/local/bin` for direct terminal use
+3. **Self-check**: run `brain ping`. Without a gateway configured, `ping` fails with fix hints — at that point have the **user run `brain init` (interactive wizard) or `brain config set` by themselves in their own terminal**: the key is typed by the user straight into a local 0600 file and never travels through the agent chat (conversation transcripts may be retained); never type or request plaintext keys on the user's behalf
 
 The binary is ready in the current session; the skill itself takes effect from the next session. Manual steps below.
 

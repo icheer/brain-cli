@@ -34,7 +34,11 @@
 帮我安装 brain 技能：https://github.com/icheer/brain-cli
 ```
 
-Agent 会打开仓库，按其中的说明完成安装（技能目录自带 install.sh，装好二进制后跑 `brain ping` 自检）。若未配置网关，`ping` 会失败并给出修复指引——此时请**你自行在你的终端**运行 `brain init`（交互向导）或 `brain config set` 完成配置：密钥由你亲手键入、只落本机 0600 文件，不经过 Agent 对话（对话记录可能被留存）；避免向 Agent 发送明文密钥。
+Agent 打开仓库后照做即可——下面这几步就是写给它的：
+
+1. **放置技能目录**：把仓库 `skills/brain/` 整目录复制（或软链）到宿主技能目录——Claude Code 为 `~/.claude/skills/brain`（用户级）或项目内 `.claude/skills/brain`；其他宿主通常为 `.agents/skills/brain`
+2. **安装二进制**：进入该目录运行 `bash install.sh`——从 Release 下载对应平台二进制到技能目录（SHA256 校验）；可加 `--link` 同时软链到 `/usr/local/bin` 供终端直用
+3. **自检**：运行 `brain ping`。若未配置网关，`ping` 会失败并给出修复指引——此时请**用户自行在其终端**运行 `brain init`（交互向导）或 `brain config set` 完成配置：密钥由用户亲手键入、只落本机 0600 文件，不经过 Agent 对话（对话记录可能被留存）；不要替用户输入或索要明文密钥
 
 二进制当前会话即可调用；技能本体下次会话生效。手动步骤见下。
 
