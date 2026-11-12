@@ -85,9 +85,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// draw 段 2026-11-03 补——此前 init 覆盖重建会静默清空生图配置）
 	oldAliases := map[string]config.Alias{}
 	var oldDraw config.DrawConfig
+	var oldDecide config.DecideConfig
 	if old, _, err := config.Load(); err == nil {
 		oldAliases = old.Aliases
 		oldDraw = old.Draw
+		oldDecide = old.Decide
 	}
 	if len(oldAliases) > 0 {
 		fmt.Fprintf(stdout, "%s\n", i18n.Tf("将保留原有别名 %d 个（brain config edit 可修改）", "keeping %d existing alias(es) (edit via brain config edit)", len(oldAliases)))
@@ -96,6 +98,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	cfg := config.Default()
 	cfg.Aliases = oldAliases
 	cfg.Draw = oldDraw
+	cfg.Decide = oldDecide
 
 	baseURL := initOpts.baseURL
 	if baseURL == "" {
@@ -173,6 +176,34 @@ func runInit(cmd *cobra.Command, _ []string) error {
 				d.Type = ""
 			}
 			cfg.Draw = d
+		}
+	}
+
+	// 决策（decide）段：可选引导（同 draw 待遇；无 type——单方言 TypeSafe wire）
+	hasOldDecide := oldDecide.Model != "" || oldDecide.BaseURL != "" || oldDecide.APIKey != ""
+	setupDecide := false
+	if hasOldDecide {
+		fmt.Fprintf(stdout, "%s\n", i18n.Tf("已保留现有 decide 配置（model=%s）", "keeping existing decide config (model=%s)", oldDecide.Model))
+		setupDecide = strings.EqualFold(ask(i18n.T("重新配置决策模型？[y/N] ", "reconfigure the decision model? [y/N] ")), "y")
+	} else {
+		setupDecide = strings.EqualFold(ask(i18n.T("配置决策原语 brain decide？（可选，回车跳过）[y/N] ", "set up the decision primitive brain decide? (optional, Enter skips) [y/N] ")), "y")
+	}
+	if setupDecide {
+		d := config.DecideConfig{}
+		d.Model = ask(i18n.T("decide.model 决策模型 ID（如 jev-latest，走 TypeSafe wire /v1/systemone）: ",
+			"decide.model decision model ID (e.g. jev-latest, TypeSafe wire /v1/systemone): "))
+		if d.Model == "" {
+			fmt.Fprintln(stdout, i18n.T("未填模型，decide 配置已跳过（之后 brain config set decide.model 可补）",
+				"no model given; decide setup skipped (add later via brain config set decide.model)"))
+		} else {
+			d.BaseURL = ask(i18n.T("decide.base_url（留空=用顶层 base_url；末尾 /v1 可写可不写）: ",
+				"decide.base_url (blank = top-level base_url; trailing /v1 optional): "))
+			if d.BaseURL != "" && !strings.HasPrefix(d.BaseURL, "http") {
+				return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.T("decide.base_url 须以 http(s):// 开头", "decide.base_url must start with http(s)://"))
+			}
+			d.APIKey = ask(i18n.T("decide.api_key（留空=用顶层 api_key；输入会回显）: ",
+				"decide.api_key (blank = top-level api_key; input is echoed): "))
+			cfg.Decide = d
 		}
 	}
 

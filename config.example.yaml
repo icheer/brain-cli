@@ -30,6 +30,14 @@ user_agent: ""                              # 逃生口：个别网关校验 UA 
 #  base_url: https://your-image-endpoint     # 可选
 #  api_key: sk-your-image-key                # 可选
 #  type: gemini                              # 可选
+
+# 决策原语 brain decide（M12）：System One 类型化判断（是/否、单选、评分），answers JSON 直出。
+#   model 必填（不回退 default_model）；协议仅 TypeSafe wire（/v1/systemone），无 type 字段；
+#   base_url / api_key 缺省兜底顶层同名字段；末尾 /v1 可写可不写。
+#decide:
+#  model: jev-latest
+#  base_url: https://api.typesafe.ai         # 可选
+#  api_key: sk-your-decide-key               # 可选
 aliases:
   fast:
     models: [anti/gemini-3.8-flash, claude-haiku-5-5]

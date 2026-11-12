@@ -86,7 +86,7 @@ func init() {
 	// ask/compare/council/draw 四个核心原语相邻前置，其后是配置三件套
 	cobra.EnableCommandSorting = false
 	rootCmd.SetHelpCommand(helpCmd)
-	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, drawCmd, initCmd, configCmd, modelsCmd, pingCmd)
+	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, drawCmd, decideCmd, initCmd, configCmd, modelsCmd, pingCmd)
 }
 
 func Execute() {

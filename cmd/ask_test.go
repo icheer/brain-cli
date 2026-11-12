@@ -86,6 +86,7 @@ func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	compareOpts = compareOptions{}
 	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	drawOpts = drawOptions{aspect: "auto", res: "auto"}     // aspect/res 同理有非零默认值
+	decideOpts = decideOptions{}                            // 同理重置（cobra flag 跨 runBrain 残留）
 	modelsOpts = modelsOptions{}
 	pingOpts = pingOptions{}
 	initOpts = struct {

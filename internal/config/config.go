@@ -28,7 +28,16 @@ type Config struct {
 	ModelsCacheTTLSeconds int              `yaml:"models_cache_ttl_seconds"`
 	UserAgent             string           `yaml:"user_agent"`        // 逃生口：个别网关对 UA 取值校验严格时覆盖默认 brain/<version>
 	Draw                  DrawConfig       `yaml:"draw,omitempty"`    // 图像生成段（M11），可选；缺省时 draw 报 exit 7 给修复指引
+	Decide                DecideConfig     `yaml:"decide,omitempty"`  // 决策段（M12），可选；缺省时 decide 报 exit 7 给修复指引
 	Aliases               map[string]Alias `yaml:"aliases,omitempty"` // 别名 → fallback 链 + 场景标注（DESIGN.md 2.3）
+}
+
+// DecideConfig 是 config.yaml 的 decide 段（DESIGN.md 第 0 节「决策模型 decide」行）：
+// 克隆 draw 先例但无 type 字段——单方言（TypeSafe wire systemone）无需推断/覆盖。
+type DecideConfig struct {
+	Model   string `yaml:"model,omitempty"`    // 决策模型 ID（或被 -m 临时覆盖）；必填不回退 default_model
+	BaseURL string `yaml:"base_url,omitempty"` // 可选；缺省用顶层 base_url（末尾 /v1 可写可不写）
+	APIKey  string `yaml:"api_key,omitempty"`  // 可选；缺省用顶层 api_key
 }
 
 // DrawConfig 是 config.yaml 的 draw 段（DESIGN.md 第 0 节「图像生成 draw」行）：
@@ -143,6 +152,16 @@ func Load() (Config, []string, error) {
 	}
 	if v := os.Getenv("BRAIN_DRAW_TYPE"); v != "" {
 		cfg.Draw.Type = v
+	}
+	// decide 段环境变量覆盖（与 draw 同构；无 type——单方言）
+	if v := os.Getenv("BRAIN_DECIDE_MODEL"); v != "" {
+		cfg.Decide.Model = v
+	}
+	if v := os.Getenv("BRAIN_DECIDE_BASE_URL"); v != "" {
+		cfg.Decide.BaseURL = v
+	}
+	if v := os.Getenv("BRAIN_DECIDE_API_KEY"); v != "" {
+		cfg.Decide.APIKey = v
 	}
 
 	// 字段缺失/非法时回退默认值，避免 0 值导致立即超时或拒绝一切输入
