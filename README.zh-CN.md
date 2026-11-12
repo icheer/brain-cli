@@ -152,6 +152,20 @@ brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "...
 | M11 | `brain draw` 图像生成（双协议 Gemini 原生 / OpenAI Images 按名推断 + `draw.type` 覆盖、draw 配置段兜底顶层、`--aspect`/`--res` 统一语义、`-i` 参考图、自动落盘 + stdout 路径）；v0.11.4 增补：`--extra-body`/`--extra-headers` 透传（openai 顶层、gemini 并入 imageConfig——grok 类私有参数） | ✅ 完成 |
 | M12 | `brain decide` 决策原语（System One 类型化判断——是/否、单选、评分带概率；仅 TypeSafe wire `/v1/systemone`、state 走 ask 同款装配 + `-Q`/`--noul` 问题通道、stdout 直出 answers JSON、`--json` 外壳、同模型重试、图片走逃生口） | ✅ 完成 |
 
+## 灵感来源
+
+`brain` 的核心方法论——同一个问题发给多个异构模型，互为第二意见、交叉验证——来自黄仁勋（Jensen Huang）分享的日常用法：
+
+> "This is no different than getting three opinions. Three doctors' opinions. I do the same thing. I ask the same question of multiple AIs. And I ask them to compare each other's notes and then give me the best of all the answers. And so I think that process of critiquing, criticizing the answers enhances cognitive skills."
+>
+> 「这与征求三种意见没有区别——三位医生的意见。我做的是同样的事：向多个 AI 提出同一个问题，让它们互相比较彼此的回答，然后给我所有答案里最好的那个。而我认为，这种批判、点评答案的过程，本身就在增强认知能力。」
+>
+> —— 黄仁勋，CNN《Fareed Zakaria GPS》访谈，2025-07-13（[CNN](https://www.cnn.com/2025/07/13/world/video/gps0713-nvidia-us-china-ai) · [报道](https://www.businessinsider.com/ai-will-redefine-jobs-not-replace-them-nvidia-ceo-huang-2025-7)）
+
+同月在北京链博会上被问到「是否使用 DeepSeek」时，他点名自己几乎同时使用 OpenAI、Gemini Pro、Claude 与 Perplexity 四个工具，并称多 AI 互证未来会成为一种安全机制——很多不同的 AI 之间形成冗余、平衡与交叉验证。
+
+`brain compare`（同题并发互证）与 `brain council`（串行交锋、逐轮互评）就是把这套做法工程化为一条命令：跨厂商接入真正独立的模型，裁决永远由你做。
+
 ## 友情社区
 
 - [LINUX DO (`linux.do`)](https://linux.do/) — 新的理想型社区

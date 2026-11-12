@@ -156,6 +156,18 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout); v0.11.4 additions: `--extra-body`/`--extra-headers` passthrough (top-level on openai, into imageConfig on gemini — grok-style private params) | ✅ done |
 | M12 | `brain decide` decision primitive (System One typed judgments — yes/no, choice, score with probabilities; TypeSafe wire `/v1/systemone` only, state assembled like ask + `-Q`/`--noul` question channels, answers JSON on stdout, `--json` envelope, same-model retry only, images via escape hatch) | ✅ done |
 
+## Inspiration
+
+The methodology at brain's core — one question, several heterogeneous models, mutual second opinions and cross-validation — comes from how Jensen Huang described his own daily practice:
+
+> "This is no different than getting three opinions. Three doctors' opinions. I do the same thing. I ask the same question of multiple AIs. And I ask them to compare each other's notes and then give me the best of all the answers. And so I think that process of critiquing, criticizing the answers enhances cognitive skills."
+>
+> — Jensen Huang, CNN's Fareed Zakaria GPS, July 13, 2025 ([CNN](https://www.cnn.com/2025/07/13/world/video/gps0713-nvidia-us-china-ai) · [coverage](https://www.businessinsider.com/ai-will-redefine-jobs-not-replace-them-nvidia-ceo-huang-2025-7))
+
+Asked at the China International Supply Chain Expo in Beijing that same month whether he uses DeepSeek, he named the four tools he runs almost simultaneously — OpenAI, Gemini Pro, Claude, and Perplexity — and called multi-AI cross-checking a safety mechanism in the making: many different AIs forming redundancy, balance, and cross-validation among them.
+
+`brain compare` (same question, many models, in parallel) and `brain council` (serial cross-examination with a growing transcript) engineer exactly this into a single command — genuinely independent cross-vendor models, with the adjudication always yours.
+
 ## Community
 
 - [LINUX DO (`linux.do`)](https://linux.do/) — Where possible begins.
