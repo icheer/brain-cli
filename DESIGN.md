@@ -152,7 +152,7 @@ aliases:
 - [x] SKILL.md 写明：宿主 Agent 的 Bash 工具超时须大于 brain 超时（如 360s），否则进程会被宿主先杀掉
 
 ### 3.5 命令树与帮助文案（v0.10.2）
-- [x] 子命令按**注册序**展示（`cobra.EnableCommandSorting=false`）：ask/compare/council/draw/decide 五个核心原语相邻前置，其后 init/config/models/ping（默认字母序会把 council 挤到 config 后面，与「核心原语」心智模型不符；来源：用户真机 Windows 反馈；draw 入列 2026-11-03 M11，decide 入列 2026-11-13 M12）
+- [x] 子命令按**注册序**展示（`cobra.EnableCommandSorting=false`）：ask/compare/council/decide 四个咨询原语相邻前置，draw 第五（甜点小工具垫后），其后 init/config/models/ping（默认字母序会把 council 挤到 config 后面，与「核心原语」心智模型不符；来源：用户真机 Windows 反馈；draw 入列 2026-11-03 M11，decide 入列 2026-11-13 M12；2026-11-12 排序调整 draw↔decide——decide 与前三个同族，draw 只是甜点）
 - [x] cobra 默认 `completion` 命令**移除**（`DisableDefaultCmd`）：shell 补全对 Agent 场景无用；且其英文文案不进 i18n 链（`--help` 中英混杂的根源）、嵌套子命令打错不报错（cobra legacyArgs 只校验根命令——`brain completion ask` 静默打印 help exit 0）
 - [x] `help` 命令双语化（`SetHelpCommand` 自定义实现，Run 与 cobra 默认一致）；`Usage:`/`Flags:` 等模板骨架词保留英文（CLI 通用惯例词汇，覆写 UsageTemplate 成本不成比例）
 

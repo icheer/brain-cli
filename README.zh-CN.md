@@ -16,8 +16,8 @@
 - **模型别名路由**：`fast` / `reason` / `coding` / `vision` 别名 + 自动故障转移（重试退避、换链上模型、stderr 提示），Agent 无需记忆模型名
 - **并行交叉验证**：`brain compare -m a,b -m reason` 同题并发多模型，原文按 `===== model: X =====` 分隔头拼接（`--json` 为 `responses[]`）；compare 里别名=模型组快捷方式，每腿不做故障转移；`--blind` 输出匿名 Model_A/B 防裁决的品牌偏见
 - **串行辩论 `brain council`**：N 个模型围绕同一议题多轮讨论——第 1 轮并行盲评（消灭首轮锚定），后续串行交锋、发言记录逐轮递增（后发言者可评价先发言者，末轮总结各方立场/变化/未解分歧；默认蛇形排布，`--order rotate|fixed` 可改）；立场视角无需专用语法，「席位-透镜表」写进上下文即是协议；席位只做同模型重试（中途换人=身份造假），缺席留标记，已积累发言不因提前终止/SIGINT 丢失
-- **图像生成 `brain draw`**：一次调用一张图、自动落盘。协议按模型名推断（含 `gemini` → Gemini 原生，其余 → OpenAI Images；`draw.type` 可覆盖）；可选 `draw:` 配置段缺省兜底既有 base_url/api_key；`--aspect`/`--res` 统一语义、按协议各自翻译；`-i` 参考图即进编辑模式；`--extra-body` 透传协议私有参数（grok 的 `aspect_ratio` 等；openai 顶层、gemini 并入 imageConfig）。stdout 恰一行保存路径，`--json` 照旧恒定单对象；图像按张计费，**不做自动重试**
 - **决策 `brain decide`**：System One 类型化判断——对一段 state 问一组是/否、单选、评分问题，返回概率与置信度（零散文），stdout 直接是可 jq 的 answers JSON；亚秒级、价格约为 chat 的 1/200。只做分类与打分（排阅读顺序、选调查入口、队列初分流），推理判断仍走 ask/council；协议仅 TypeSafe wire（`/v1/systemone`）事实标准；同模型重试不跨模型转移（概率校准基准不可换）；图片走 `--extra-body` 逃生口
+- **图像生成 `brain draw`**：一次调用一张图、自动落盘。协议按模型名推断（含 `gemini` → Gemini 原生，其余 → OpenAI Images；`draw.type` 可覆盖）；可选 `draw:` 配置段缺省兜底既有 base_url/api_key；`--aspect`/`--res` 统一语义、按协议各自翻译；`-i` 参考图即进编辑模式；`--extra-body` 透传协议私有参数（grok 的 `aspect_ratio` 等；openai 顶层、gemini 并入 imageConfig）。stdout 恰一行保存路径，`--json` 照旧恒定单对象；图像按张计费，**不做自动重试**
 - **可选推理深度与输出预算**：`-e low|medium|high|…`、`--max-output-tokens N` 纯透传（不设则各模型/网关默认；档位因模型而异，如智谱 GLM-5.3 仅 low/high/max）
 - **通用透传口 `--extra-body` / `--extra-headers`**：任意请求体参数（temperature、response_format、厂商私有字段…）与 HTTP 头以 JSON 顶层 assign 透传（内联或 `@file`，可重复有序合并）；保留字拒绝防自毁，`--dry-run` 可核对合并结果；对齐 OpenAI SDK 的 extra_body/extra_headers
 - **可解析**：退出码 0-7 / 130 全量语义；`--json` 成败恒定输出单对象（`jq` 无条件解析，`error.code` 与退出码一致）
@@ -91,21 +91,21 @@ brain council -m panel -f design.md \
 ```
 
 ```bash
-# 图像生成（自动落盘到当前目录；stdout = 保存路径）
-brain config set draw.model gemini-3.1-flash-image   # 一次性；draw.base_url/api_key 可选（缺省兜底顶层）
-brain draw --res 1K "a cute cat wearing a tiny knitted hat, watercolor style"
-brain draw -i cat.jpg "把帽子换成红色"               # 参考图 → 编辑模式
-brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "..."  # 协议私有参数透传
-# --aspect 1:1|16:9|9:16|… 与 --res 1K|2K|4K 按协议各自翻译；图像按张计费，不做自动重试
-```
-
-```bash
 # 决策（System One 类型化判断；stdout = 可 jq 的 answers JSON）
 brain config set decide.model jev-latest                # 一次性；TypeSafe wire /v1/systemone
 brain decide --noul "is_urgent=是否表达紧迫性" "工单正文…"          # 是/否速记（可重复）
 brain decide -Q '{"dept":{"type":"choice","criteria":{"billing":"计费","technical":"缺陷"}}}' "工单正文…"
 brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'
 # 只做分类与打分（排序/分流），不做需要推理的判断；类型化不免疫「合法格式的错误答案」
+```
+
+```bash
+# 图像生成（自动落盘到当前目录；stdout = 保存路径）
+brain config set draw.model gemini-3.1-flash-image   # 一次性；draw.base_url/api_key 可选（缺省兜底顶层）
+brain draw --res 1K "a cute cat wearing a tiny knitted hat, watercolor style"
+brain draw -i cat.jpg "把帽子换成红色"               # 参考图 → 编辑模式
+brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "..."  # 协议私有参数透传
+# --aspect 1:1|16:9|9:16|… 与 --res 1K|2K|4K 按协议各自翻译；图像按张计费，不做自动重试
 ```
 
 给 Agent 用：把 `skills/brain/` 复制或链接进 `.claude/skills/`（或 `.agents/skills/`），SKILL.md 会引导宿主 Agent 何时、如何、何时不调用 brain。

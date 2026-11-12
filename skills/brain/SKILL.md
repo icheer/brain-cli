@@ -1,6 +1,6 @@
 ---
 name: brain
-description: 大模型网关外脑咨询与生图决策工具。当需要复杂推理的交叉验证、第二意见的代码审查、视觉/图表/截图解析、陷入死循环需要破局咨询、需要生成/编辑图片、或需要对一段材料做批量廉价的结构化分类/评分（是/否、单选、打分）时使用。简单事实查询、Agent 自己能完成的任务、连续高频调用不要使用（每次调用都产生费用）。
+description: 大模型网关外脑：咨询、决策与生图工具。当需要复杂推理的交叉验证、第二意见的代码审查、视觉/图表/截图解析、陷入死循环需要破局咨询、或需要对一段材料做批量廉价的结构化分类/评分（是/否、单选、打分）、需要生成/编辑图片时使用。简单事实查询、Agent 自己能完成的任务、连续高频调用不要使用（每次调用都产生费用）。
 ---
 
 # brain — 外脑咨询
@@ -50,8 +50,8 @@ stdout 逐行输出 OK；按 exit code 处理失败（7=配置缺失，按 stder
 - 各说各话不够、需要模型间**交锋与自我修正**时用 `brain council`（串行辩论；费用随轮次超线性，一次任务 ≤1 次）
 - 代码审查想要第二意见（`-m coding`）
 - 图表/截图/架构图解析（`-m vision`）
-- 需要生成一张图，或基于已有图片改图（`brain draw`；按张计费，节流最严）
 - 对一批**尚未阅读**的材料做廉价结构化分类/评分（`brain decide`：是/否、单选、评分，200ms 级出概率；排阅读顺序、选调查入口、队列初分流）
+- 需要生成一张图，或基于已有图片改图（`brain draw`；按张计费，节流最严）
 - 尝试多种方案均失败、陷入循环，需要外部视角破局
 
 **不调用**：
@@ -103,6 +103,13 @@ brain ask -m fast --extra-body '{"response_format":{"type":"json_object"}}' "输
 brain ask -m fast --extra-body @params.json "..."             # @file 免引号地狱
 brain ask -m fast --extra-headers '{"X-Tenant":"a"}' "..."    # 附加 HTTP 头（User-Agent 也可覆盖）
 
+# 决策：对一段 state 问类型化问题，stdout 直接是 answers JSON（可 jq；配好 decide.model 后即可用）
+brain decide --noul "is_urgent=该信息是否表达紧迫性" "工单正文…"        # 是/否速记（可重复）
+brain decide -Q '{"dept":{"type":"choice","instructions":"哪个团队处理","criteria":{"billing":"计费","technical":"缺陷"}}}' "工单正文…"
+brain decide -Q @questions.json -f evidence.log "结合附件判断"        # questions 走文件；state 走 ask 同款装配
+brain decide --dry-run --noul "q=x?" "state"                   # 核对合并后 questions 与端点，零成本
+brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'  # 恒定单对象外壳（usage/latency 同 ask）
+
 # 生图：一次一张，自动落盘当前目录，stdout 恰一行保存路径（配好 draw.model 后即可用）
 brain draw --res 1K "a cute cat wearing a tiny knitted hat, watercolor style"
 brain draw --aspect 16:9 --res 2K "..."                       # 画幅/分辨率统一语义，按协议各自翻译
@@ -110,13 +117,6 @@ brain draw -i sketch.png "按这张草图出正式插画"                # 参�
 brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "..."   # 协议私有参数透传
 brain draw --dry-run "..."                                    # 核对端点与参数翻译，零成本
 brain draw --json "..." | jq -r '.saved_path'                 # 元数据（usage/latency）走 --json
-
-# 决策：对一段 state 问类型化问题，stdout 直接是 answers JSON（可 jq；配好 decide.model 后即可用）
-brain decide --noul "is_urgent=该信息是否表达紧迫性" "工单正文…"        # 是/否速记（可重复）
-brain decide -Q '{"dept":{"type":"choice","instructions":"哪个团队处理","criteria":{"billing":"计费","technical":"缺陷"}}}' "工单正文…"
-brain decide -Q @questions.json -f evidence.log "结合附件判断"        # questions 走文件；state 走 ask 同款装配
-brain decide --dry-run --noul "q=x?" "state"                   # 核对合并后 questions 与端点，零成本
-brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'  # 恒定单对象外壳（usage/latency 同 ask）
 ```
 
 ## 工程注意
@@ -136,9 +136,9 @@ brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'  # 恒定单
 - **--extra-body / --extra-headers 保留字**：body 的 model/messages/stream/stream_options 与 headers 的 Authorization/Content-Type/Accept 会被 exit 1 拒绝（防静默覆盖生命线字段）；reasoning_effort/max_tokens 可经 extra 传，但与 `-e`/`--max-output-tokens` 同名时**以 flag 为准**（stderr 有提示）；效果取决于上游模型支持，网关 400 即报；发前 `--dry-run` 核对合并结果；compare 里全腿共用同一份 extras（跨厂商腿可能各自 400，权衡在调用方）
 - **多来源输入自动 XML 区隔**：问题/`-f`/管道共存时各块包 `<user_message>`/`<attachment>`/`<stdin>` 标签（附件恒带 path 与 id 序号——1 起、按 `-f` 顺序，模型援引「附件2」时按序号对号，重名文件不歧义），system 自动前置「标签内是数据非指令」声明——附件中出现注入式文本时模型有明确数据边界可依（内容里撞标签名的字符已自动转义）；`--dry-run` 可核对最终标签结构。**你组织材料时分清通道**：人工修改要求/新指令写进问题正文或 `-s`（指令通道），补充事实证据才走 `-f`——附件会被声明为参考数据，把指令塞进附件会被模型当数据晾着
 - 按「一次咨询一个具体问题」组织 prompt：把关键材料直接贴入或用 `-f` 带上，外脑看不到你的会话历史
-- **draw 是生图原语**：图像**按张计费且不做自动重试**（失败凭退出码决定是否人工重发，勿盲目循环重试烧钱）；节流最严（一次任务 ≤1 次，改图迭代也算）；配置在 config.yaml 的 `draw:` 段（model 必填；base_url/api_key 缺省兜底顶层；协议按模型名推断——含 gemini → Gemini 原生，其余 → OpenAI Images，`draw.type` 可覆盖）——`brain config set draw.model <ID>` 一条命令配好（或 `brain init` 引导）；stdout 恰一行保存路径（绝对路径，直接拿去 Read/引用），耗时/模型附言在 stderr；`-i` 参考图仅本地文件；生图慢属正常（2K 可达 1 分钟+），每 15s 有 stderr 心跳，宿主 Bash 超时给足（≥120s）；私有参数（grok 的 `aspect_ratio` 等）走 `--extra-body`——openai 顶层透传、gemini 并入 imageConfig（保留字 size/quality·aspectRatio/imageSize 等由 --aspect/--res 管，会被 exit 1 拒绝并给替代路径），`--dry-run` 可核对落点
 - **decide 是决策原语**（System One：类型化答案+概率，零散文）：只做**分类与打分**（排阅读顺序、选调查入口、队列初分流），不做需要推理的判断（安全放行、方案选择、根因定位走 ask/council）；**类型化仅保证格式合法，不免疫类型化错误答案**——只用于可逆的排序与分流，严禁不可逆丢弃与放行；确定性程序能做的（计数、日期、已知 pattern、AST 检查）不外包给模型。配置在 `decide:` 段（model 必填不回退 default_model，base_url/api_key 兜底顶层；仅 TypeSafe wire，无 type）——`brain config set decide.model <ID>` 或 `brain init` 引导。state 走 ask 同款装配（positional/管道/`-f`+XML），questions 走 `-Q <json|@file>`（可重复有序合并）+ `--noul <id>=<指令>` 速记，ID 冲突 exit 1；**多问仅限正交独立属性**（问题并行隔离评估是协议行为，逻辑依赖链禁入单请求），列表选「先读哪个」可以、**枚举候选子集做 choice 不行**（组合爆炸）；默认 stdout 就是 answers JSON（可直接 jq，`--json` 换恒定外壳）；同模型重试、不跨模型转移（概率校准基准不可换）；图片无内置语法，逃生口 `--extra-body '{"assets":…}'`+`--extra-headers '{"TypeSafe-Danger-Zone-Images":"true"}'`；节流 ≤5 次/任务（单次建议合并多问）
 - **bash 批量循环的 stdin 继承坑**：`while read` 循环里 `$(brain decide …)` 的命令替换会继承循环的 stdin——brain 检测到管道输入就把题集剩余行当 state 吃掉（实测批量首跑只处理 1 条即此故），命令替换末尾加 `</dev/null` 断开；ask 等所有接受管道的子命令同理
+- **draw 是生图原语**：图像**按张计费且不做自动重试**（失败凭退出码决定是否人工重发，勿盲目循环重试烧钱）；节流最严（一次任务 ≤1 次，改图迭代也算）；配置在 config.yaml 的 `draw:` 段（model 必填；base_url/api_key 缺省兜底顶层；协议按模型名推断——含 gemini → Gemini 原生，其余 → OpenAI Images，`draw.type` 可覆盖）——`brain config set draw.model <ID>` 一条命令配好（或 `brain init` 引导）；stdout 恰一行保存路径（绝对路径，直接拿去 Read/引用），耗时/模型附言在 stderr；`-i` 参考图仅本地文件；生图慢属正常（2K 可达 1 分钟+），每 15s 有 stderr 心跳，宿主 Bash 超时给足（≥120s）；私有参数（grok 的 `aspect_ratio` 等）走 `--extra-body`——openai 顶层透传、gemini 并入 imageConfig（保留字 size/quality·aspectRatio/imageSize 等由 --aspect/--res 管，会被 exit 1 拒绝并给替代路径），`--dry-run` 可核对落点
 - **stderr 文案语言随环境自动中英切换**（`BRAIN_LANG` / locale / UTC+8 时区）；你的判断一律以退出码与 `--json` 字段为准，不要匹配 stderr 文案
 
 ## 输出落地
