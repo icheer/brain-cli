@@ -130,7 +130,7 @@ brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'
 
 ## 状态与路线
 
-**:rocket: v0.11.4 已发布**（M0–M11）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.12.0 已发布**（M0–M12）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
@@ -146,6 +146,7 @@ brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'
 | M9 | `brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文、缺席退出、沉没成本保护）；v0.10.x 增补：`--order snake/rotate/fixed` 发言顺序策略、轮次短旗标 `-C`→`-r`（breaking） | ✅ 完成 |
 | M10 | 多来源输入 XML 区隔（`<user_message>`/`<attachment>`/`<stdin>` 标签 + 数据非指令 system 声明）；安装器线：Windows Git Bash 原生适配、形态检测就地升级 + SKILL.md/安装器随包同步、`--uninstall` 卸载；v0.11.3 增补：不可信内容保留字转义（杜绝伪造标签边界/假发言记录）、`<attachment id>` 序号援引 | ✅ 完成 |
 | M11 | `brain draw` 图像生成（双协议 Gemini 原生 / OpenAI Images 按名推断 + `draw.type` 覆盖、draw 配置段兜底顶层、`--aspect`/`--res` 统一语义、`-i` 参考图、自动落盘 + stdout 路径）；v0.11.4 增补：`--extra-body`/`--extra-headers` 透传（openai 顶层、gemini 并入 imageConfig——grok 类私有参数） | ✅ 完成 |
+| M12 | `brain decide` 决策原语（System One 类型化判断——是/否、单选、评分带概率；仅 TypeSafe wire `/v1/systemone`、state 走 ask 同款装配 + `-Q`/`--noul` 问题通道、stdout 直出 answers JSON、`--json` 外壳、同模型重试、图片走逃生口） | ✅ 完成 |
 
 ## 友情社区
 
