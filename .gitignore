@@ -27,3 +27,6 @@ dist/
 
 # 本地环境变量（含 api_key，绝不提交）
 .env
+
+# 调查研究语料（brain judge 预研等，本地语料不上传）
+research/
