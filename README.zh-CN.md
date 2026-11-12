@@ -130,7 +130,7 @@ brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "...
 
 ## 状态与路线
 
-**:rocket: v0.12.0 已发布**（M0–M12）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
+**:rocket: v0.12.1 已发布**（M0–M12）——里程碑与验收状态见 [DESIGN.md](DESIGN.md) 第 7 节。
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
