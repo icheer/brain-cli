@@ -161,15 +161,15 @@ brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "...
 
 > "This is no different than getting three opinions. Three doctors' opinions. I do the same thing. I ask the same question of multiple AIs. And I ask them to compare each other's notes and then give me the best of all the answers. And so I think that process of critiquing, criticizing the answers enhances cognitive skills."
 >
-> 「这与征求三种意见没有区别——三位医生的意见。我做的是同样的事：向多个 AI 提出同一个问题，让它们互相比较彼此的回答，然后给我所有答案里最好的那个。而我认为，这种批判、点评答案的过程，本身就在增强认知能力。」
+> 「这与征求三种意见没有区别——三位医生的意见。我做的是同样的事：向多个 AI 提出同一个问题，让它们互相比较彼此的回答，然后给我所有答案里最好的那个。而这种批判、点评答案的过程，本身就在增强认知能力。」
 >
 > —— 黄仁勋，CNN《Fareed Zakaria GPS》访谈，2025-07-13（[CNN](https://www.cnn.com/2025/07/13/world/video/gps0713-nvidia-us-china-ai) · [报道](https://www.businessinsider.com/ai-will-redefine-jobs-not-replace-them-nvidia-ceo-huang-2025-7)）
 
-同月在北京链博会上被问到「是否使用 DeepSeek」时，他点名自己几乎同时使用 OpenAI、Gemini Pro、Claude 与 Perplexity 四个工具，并称多 AI 互证未来会成为一种安全机制——很多不同的 AI 之间形成冗余、平衡与交叉验证。
+同月他在北京链博会接受采访，被问到「是否使用 DeepSeek」时，点名自己几乎同时在跑 OpenAI、Gemini Pro、Claude 与 Perplexity 四个工具，并称多 AI 互证未来会成为一种安全机制——不同的 AI 之间形成冗余、平衡与交叉验证。
 
-`brain compare`（同题并发互证）与 `brain council`（串行交锋、逐轮互评）就是把这套做法工程化为一条命令：跨厂商接入真正独立的模型，裁决永远由你做。
+`brain compare`（同题并发互证）与 `brain council`（串行交锋、逐轮互评）正是把这套做法工程化为一条命令——跨厂商接入真正独立的模型，裁决永远由你做。
 
-> 作者也谨在此向黄仁勋本人致以个人的敬意与支持。从 Denny's 餐馆的一张餐桌起步，他把一家游戏显卡公司带到了 AI 时代的中心；近来纵有风波，瑕不掩瑜——他对技术的诚实、对开发社区的慷慨，以及换下皮衣、身着唐装站上北京舞台时对中国展现的尊重与善意，始终散发着人格的光辉。愿他继续把 AI 带向普惠。
+> 作者也谨在此向黄仁勋本人致以个人的敬意与支持。从硅谷一家 Denny's 餐馆的卡座起步，他把一家游戏显卡公司带到了 AI 时代的中心。近来纵有风波，瑕不掩瑜——他对技术的诚实、对开发社区的慷慨，以及脱下标志性皮衣、换上唐装站上北京舞台时对中国展现的尊重与善意，始终散发着人格的光辉。愿他继续把 AI 带向普惠。
 >
 > —— icheer，2026-11
 

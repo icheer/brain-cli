@@ -162,17 +162,17 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 ## Inspiration
 
-The methodology at brain's core — one question, several heterogeneous models, mutual second opinions and cross-validation — comes from how Jensen Huang described his own daily practice:
+The methodology at `brain`'s core — one question, several heterogeneous models, mutual second opinions and cross-validation — comes from how Jensen Huang described his own daily practice:
 
 > "This is no different than getting three opinions. Three doctors' opinions. I do the same thing. I ask the same question of multiple AIs. And I ask them to compare each other's notes and then give me the best of all the answers. And so I think that process of critiquing, criticizing the answers enhances cognitive skills."
 >
 > — Jensen Huang, CNN's Fareed Zakaria GPS, July 13, 2025 ([CNN](https://www.cnn.com/2025/07/13/world/video/gps0713-nvidia-us-china-ai) · [coverage](https://www.businessinsider.com/ai-will-redefine-jobs-not-replace-them-nvidia-ceo-huang-2025-7))
 
-Asked at the China International Supply Chain Expo in Beijing that same month whether he uses DeepSeek, he named the four tools he runs almost simultaneously — OpenAI, Gemini Pro, Claude, and Perplexity — and called multi-AI cross-checking a safety mechanism in the making: many different AIs forming redundancy, balance, and cross-validation among them.
+That same month, at the China International Supply Chain Expo in Beijing, he was asked whether he uses DeepSeek. His answer: he runs four tools almost simultaneously — OpenAI, Gemini Pro, Claude, and Perplexity — giving them all the same question, letting them check each other's answers, and expecting this kind of multi-AI cross-checking to become a safety mechanism: different AIs forming redundancy, balance, and cross-validation among themselves.
 
-`brain compare` (same question, many models, in parallel) and `brain council` (serial cross-examination with a growing transcript) engineer exactly this into a single command — genuinely independent cross-vendor models, with the adjudication always yours.
+`brain compare` (same question, many models, in parallel) and `brain council` (serial cross-examination, each model building on the last) engineer exactly this into a single command — genuinely independent cross-vendor models, with the adjudication always yours.
 
-> The author also wishes to add a personal note of respect and support for Jensen Huang himself. From a table at a Denny's diner, he carried a gaming-graphics company to the center of the AI era; whatever storms swirl at the moment, the flaws do not dim the light — his engineer's honesty, his generosity to the developer community, and the respect and goodwill he showed China when he swapped his signature leather jacket for a Tang suit on a Beijing stage have always shone through. May he keep carrying AI toward empowerment for everyone.
+> The author also wishes to add a personal note of respect and support for Jensen Huang himself. From a booth at a Denny's diner in Silicon Valley, he carried a gaming-graphics company to the center of the AI era. Whatever storms swirl at the moment, the flaws do not dim the light — his engineer's honesty, his generosity to the developer community, and the respect and goodwill he showed China when he swapped his signature leather jacket for a Tang suit on a Beijing stage have always shone through. May he keep carrying AI toward empowerment for everyone.
 >
 > — icheer, Nov 2026
 
