@@ -56,6 +56,9 @@ The binary is ready in the current session; the skill itself takes effect from t
 bash skills/brain/install.sh        # skill scenario: download the binary into the skill dir from Releases (SHA256-verified)
                                     #   append --link to also symlink it into /usr/local/bin (re-running upgrades both),
                                     #   or --global to install there only (auto-sudo if not writable)
+# Primary upgrade path: just run brain update once installed — it locates the
+#             skill dir and delegates to install.sh (SKILL.md/installer sync
+#             included; --check reports versions only; exit codes programmable)
 # Windows: run the same script in Git Bash (installs brain.exe; global default ~/bin) or WSL
 # Re-running install.sh upgrades in place: it auto-detects your install layout (symlink /
 # global / skill-dir) and refreshes SKILL.md from the same release tarball (v0.10.3+)

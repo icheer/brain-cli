@@ -87,7 +87,7 @@ func init() {
 	// 其后是配置三件套（2026-11-12 排序调整：decide 与前三个同族，draw 垫后）
 	cobra.EnableCommandSorting = false
 	rootCmd.SetHelpCommand(helpCmd)
-	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, decideCmd, drawCmd, initCmd, configCmd, modelsCmd, pingCmd)
+	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, decideCmd, drawCmd, initCmd, configCmd, modelsCmd, pingCmd, updateCmd)
 }
 
 func Execute() {

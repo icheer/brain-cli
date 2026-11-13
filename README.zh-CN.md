@@ -56,6 +56,8 @@ Agent 打开仓库后照做即可——下面这几步就是写给它的：
 bash skills/brain/install.sh        # 技能场景：从 Release 下载二进制到技能目录（SHA256 校验）
                                     #   追加 --link 可同时软链到 /usr/local/bin（重装即全局升级）；
                                     #   追加 --global 则只装全局（目录不可写时自动 sudo）
+# 升级主路径：装好二进制后直接 brain update——自动发现技能目录并委托 install.sh
+#             （含 SKILL.md/安装器同步；--check 只查版本零下载；退出码可编程）
 # Windows：Git Bash（原生装 brain.exe，全局默认 ~/bin）或 WSL 下运行同一脚本
 # 重跑 install.sh 即就地升级：自动识别既有安装形态（软链/全局/技能目录），
 # 并从同一 Release 包同步 SKILL.md（v0.10.3 起）
