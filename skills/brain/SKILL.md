@@ -104,11 +104,14 @@ brain ask -m fast --extra-body @params.json "..."             # @file 免引号�
 brain ask -m fast --extra-headers '{"X-Tenant":"a"}' "..."    # 附加 HTTP 头（User-Agent 也可覆盖）
 
 # 决策：对一段 state 问类型化问题，stdout 直接是 answers JSON（可 jq；配好 decide.model 后即可用）
-brain decide --noul "is_urgent=该信息是否表达紧迫性" "工单正文…"        # 是/否速记（可重复）
-brain decide -Q '{"dept":{"type":"choice","instructions":"哪个团队处理","criteria":{"billing":"计费","technical":"缺陷"}}}' "工单正文…"
+# 三种题型（可混在同一请求；问题并行隔离评估——仅限正交独立属性）：
+brain decide --noul "is_urgent=该信息是否表达紧迫性" "工单正文…"        # 判断：是/否概率（--noul 速记，可重复）
+brain decide -Q '{"dept":{"type":"choice","instructions":"哪个团队处理","criteria":{"billing":"计费","technical":"缺陷"}}}' "工单正文…"   # 选择：单选+全项概率分布
+brain decide -Q '{"risk":{"type":"score","instructions":"严重程度","criteria":["low","medium","high"]}}' "工单正文…"   # 打分：score 0..N-1 连续值（criteria 定档）
 brain decide -Q @questions.json -f evidence.log "结合附件判断"        # questions 走文件；state 走 ask 同款装配
 brain decide --dry-run --noul "q=x?" "state"                   # 核对合并后 questions 与端点，零成本
 brain decide --json --noul "q=x?" "state" | jq -r '.answers.q.noul'  # 恒定单对象外壳（usage/latency 同 ask）
+# 完整题型/字段说明（confidence、assets 图片逃生口等）：https://docs.typesafe.ai/llms.txt（纯文本文档索引，可自行 fetch 学习）
 
 # 生图：一次一张，自动落盘当前目录，stdout 恰一行保存路径（配好 draw.model 后即可用）
 brain draw --res 1K "a cute cat wearing a tiny knitted hat, watercolor style"
