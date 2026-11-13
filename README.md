@@ -141,7 +141,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 
 ## Status & roadmap
 
-**:rocket: v0.12.1 released** (M0–M12) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
+**:rocket: v0.13.0 released** (M0–M13) — milestone details in [DESIGN.md](DESIGN.md) section 7 (in Chinese).
 
 | Milestone | Scope | Status |
 | --- | --- | --- |
@@ -158,6 +158,7 @@ Host agents ship their own subagent mechanism (e.g. Claude Code's Task tool): sa
 | M10 | Multi-source input XML tagging (`<user_message>`/`<attachment>`/`<stdin>` + data-not-instructions system declaration); installer track: Windows Git Bash native support, layout-detecting in-place upgrade with SKILL.md/installer shipped from release tarballs, `--uninstall`; v0.11.3 additions: reserved-tag escaping in untrusted content (spoofed block boundaries / fabricated speeches impossible), `<attachment id>` sequence for citation | ✅ done |
 | M11 | `brain draw` image generation (dual protocol Gemini native / OpenAI Images with name-based inference + `draw.type` override, draw config section with top-level fallback, unified `--aspect`/`--res`, `-i` reference images, auto-save + path on stdout); v0.11.4 additions: `--extra-body`/`--extra-headers` passthrough (top-level on openai, into imageConfig on gemini — grok-style private params) | ✅ done |
 | M12 | `brain decide` decision primitive (System One typed judgments — yes/no, choice, score with probabilities; TypeSafe wire `/v1/systemone` only, state assembled like ask + `-Q`/`--noul` question channels, answers JSON on stdout, `--json` envelope, same-model retry only, images via escape hatch) | ✅ done |
+| M13 | `brain update` delegated self-upgrade (three-layer discovery: `--skill-dir` / walk-up from real path / candidate table `~/.claude\|.codex\|.agents/skills/brain`; GitHub version check + zero-download `--check`; self-rename to `.old` against ETXTBSY/file locks, synchronous install.sh delegation with exit-code relay and failure rollback; no Go-native downloader) | ✅ done |
 
 ## Inspiration
 
