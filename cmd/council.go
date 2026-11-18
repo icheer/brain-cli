@@ -460,10 +460,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		var tl *app.TooLargeError
 		if errors.As(err, &tl) {
-			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s",
-				i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
-					"input %s exceeds limit %s (adjustable via --max-input-bytes)",
-					humanBytes(tl.Size), humanBytes(tl.Limit)))
+			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s", tooLargeMsg(tl))
 		}
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}

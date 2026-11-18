@@ -307,8 +307,7 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 		}
 		if int64(len(data)) > cfg.MaxInputBytes {
 			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s",
-				i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
-					"input %s exceeds limit %s (adjustable via --max-input-bytes)", humanBytes(int64(len(data))), humanBytes(cfg.MaxInputBytes)))
+				tooLargeMsg(&app.TooLargeError{Size: int64(len(data)), Limit: cfg.MaxInputBytes, Capped: true}))
 		}
 		if len(data) > 0 {
 			if !utf8.Valid(data) {
@@ -325,8 +324,7 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	if n := int64(len(prompt)); n > cfg.MaxInputBytes {
 		return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s",
-			i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
-				"input %s exceeds limit %s (adjustable via --max-input-bytes)", humanBytes(n), humanBytes(cfg.MaxInputBytes)))
+			tooLargeMsg(&app.TooLargeError{Size: n, Limit: cfg.MaxInputBytes}))
 	}
 
 	// ---- 参考图（-i，仅本地文件） ----

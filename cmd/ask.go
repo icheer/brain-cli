@@ -258,10 +258,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		var tl *app.TooLargeError
 		if errors.As(err, &tl) {
-			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s",
-				i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
-					"input %s exceeds limit %s (adjustable via --max-input-bytes)",
-					humanBytes(tl.Size), humanBytes(tl.Limit)))
+			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s", tooLargeMsg(tl))
 		}
 		return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
 	}
@@ -498,4 +495,17 @@ func humanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f%ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// tooLargeMsg 输入超限的统一 stderr 文案；Capped 时 Size 是流式截停的下界
+// （管道无法预知全量），用 ≥ 标明而非伪称精确值。
+func tooLargeMsg(tl *app.TooLargeError) string {
+	if tl.Capped {
+		return i18n.Tf("输入 ≥%s 超过上限 %s（--max-input-bytes 可调）",
+			"input ≥%s exceeds limit %s (adjustable via --max-input-bytes)",
+			humanBytes(tl.Size), humanBytes(tl.Limit))
+	}
+	return i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
+		"input %s exceeds limit %s (adjustable via --max-input-bytes)",
+		humanBytes(tl.Size), humanBytes(tl.Limit))
 }

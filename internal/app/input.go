@@ -21,9 +21,16 @@ func (e *InputError) Error() string { return e.Msg }
 type TooLargeError struct {
 	Size  int64
 	Limit int64
+	// Capped 为 true 表示流式读取在 limit+1 字节处主动截停，Size 只是下界
+	// （管道 stdin / 非常规文件无法预知全量；常规文件会先 Stat 报精确大小）。
+	Capped bool
 }
 
 func (e *TooLargeError) Error() string {
+	if e.Capped {
+		return i18n.Tf("输入超过上限 %d 字节（至少 %d 字节）",
+			"input exceeds limit of %d bytes (at least %d bytes)", e.Limit, e.Size)
+	}
 	return i18n.Tf("输入 %d 字节超过上限 %d 字节", "input of %d bytes exceeds limit of %d bytes", e.Size, e.Limit)
 }
 
@@ -90,7 +97,7 @@ func Assemble(args []string, files []string, stdin io.Reader, piped bool, limit 
 			return "", info, &InputError{Msg: i18n.Tf("读取管道 stdin 失败: %v", "failed to read piped stdin: %v", err)}
 		}
 		if int64(len(data)) > limit {
-			return "", info, &TooLargeError{Size: int64(len(data)), Limit: limit}
+			return "", info, &TooLargeError{Size: int64(len(data)), Limit: limit, Capped: true}
 		}
 		if len(data) > 0 {
 			if !utf8.Valid(data) {
@@ -148,8 +155,14 @@ func readTextFile(path string, limit int64) (string, error) {
 	}
 	defer f.Close()
 
-	if info, err := f.Stat(); err == nil && info.IsDir() {
+	st, statErr := f.Stat()
+	if statErr == nil && st.IsDir() {
 		return "", &InputError{Msg: i18n.Tf("-f 指向的是目录: %s", "-f points to a directory: %s", path)}
+	}
+	// 常规文件的大小在元数据里就有：超限可直接报精确值（Stat 不读内容，不违流式防线）；
+	// 非常规文件（/dev/stdin、fifo 等）Stat 大小不可靠，仍走下方读满 limit+1 截停。
+	if statErr == nil && st.Mode().IsRegular() && st.Size() > limit {
+		return "", &TooLargeError{Size: st.Size(), Limit: limit}
 	}
 
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
@@ -157,7 +170,7 @@ func readTextFile(path string, limit int64) (string, error) {
 		return "", &InputError{Msg: i18n.Tf("读取文件失败 %s: %v", "failed to read file %s: %v", path, err)}
 	}
 	if int64(len(data)) > limit {
-		return "", &TooLargeError{Size: int64(len(data)), Limit: limit}
+		return "", &TooLargeError{Size: int64(len(data)), Limit: limit, Capped: true}
 	}
 	if !utf8.Valid(data) {
 		return "", &InputError{Msg: i18n.Tf("文件不是 UTF-8 文本（PDF/二进制请先转文本）: %s", "file is not UTF-8 text (convert PDF/binary first): %s", path)}

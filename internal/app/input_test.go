@@ -86,20 +86,29 @@ func TestAssembleSpecialFileBounded(t *testing.T) {
 		t.Skip("仅 linux 有 /dev/zero")
 	}
 	_, _, err := Assemble([]string{"q"}, []string{"/dev/zero"}, nil, false, 1024)
-	if _, ok := err.(*TooLargeError); !ok {
+	tl, ok := err.(*TooLargeError)
+	if !ok {
 		t.Fatalf("应得 TooLargeError（限长截停），得到 %v", err)
+	}
+	// 非常规文件 Stat 大小不可靠（/dev/zero 为 0），必须走读满 limit+1 截停的下界路径
+	if !tl.Capped {
+		t.Fatalf("特殊文件应 Capped=true，得到 %+v", tl)
 	}
 }
 
-// 超过上限的常规文件在读取阶段即截停，无需整读。
+// 超过上限的常规文件先 Stat 元数据报精确大小，无需读内容。
 func TestAssembleOversizedFile(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "big.txt")
 	if err := os.WriteFile(p, bytes.Repeat([]byte("a"), 100), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err := Assemble([]string{"q"}, []string{p}, nil, false, 10)
-	if _, ok := err.(*TooLargeError); !ok {
+	tl, ok := err.(*TooLargeError)
+	if !ok {
 		t.Fatalf("应得 TooLargeError，得到 %v", err)
+	}
+	if tl.Capped || tl.Size != 100 {
+		t.Fatalf("常规文件应报精确大小 100B 且非 Capped，得到 %+v", tl)
 	}
 }
 
@@ -207,7 +216,12 @@ func TestAssembleStdinInvalidUTF8AndTooLarge(t *testing.T) {
 		t.Fatalf("非 UTF-8 管道输入应得 InputError，得到 %v", err)
 	}
 	_, _, err = Assemble(nil, nil, strings.NewReader(strings.Repeat("a", 50)), true, 10)
-	if _, ok := err.(*TooLargeError); !ok {
+	tl, ok := err.(*TooLargeError)
+	if !ok {
 		t.Fatalf("超限管道输入应得 TooLargeError，得到 %v", err)
+	}
+	// 管道无法预知全量：读到 limit+1 即截停，Size 是下界而非真实 50B
+	if !tl.Capped || tl.Size != 11 {
+		t.Fatalf("管道截停应 Capped=true 且 Size=limit+1=11，得到 %+v", tl)
 	}
 }
