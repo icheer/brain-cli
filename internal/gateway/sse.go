@@ -46,18 +46,21 @@ func marshalWithExtras(req ChatRequest) ([]byte, error) {
 // M2 的 --stream 在此挂载增量打印。
 type DeltaHandler func(content, reasoning string)
 
+type streamError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Code    any    `json:"code"` // 数值或字符串
+}
+
 // streamChunk 是 SSE 单个 data 事件的负载结构。
 // 真实网关实测（one-api 系）：错误可能以 HTTP 200 + data:{"error":{...}} 形式出现在流内。
 type streamChunk struct {
-	Error *struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-		Code    any    `json:"code"` // 数值或字符串
-	} `json:"error"`
+	Error   *streamError `json:"error"`
 	Choices []struct {
 		Delta struct {
 			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"` // DeepSeek 系思维链字段
+			ReasoningContent string `json:"reasoning_content"` // DeepSeek / one-api 系思维链字段
+			Reasoning        string `json:"reasoning"`         // OpenRouter 等流式思维链字段
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -91,7 +94,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		if isTimeout(err) {
+		if IsTimeout(err) {
 			return nil, &TimeoutError{Err: err}
 		}
 		return nil, fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
@@ -102,12 +105,18 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return nil, &StatusError{
 			Status:     resp.StatusCode,
-			Body:       truncate(string(data), 400),
-			RetryAfter: retryAfter(resp),
+			Body:       Truncate(string(data), 400),
+			RetryAfter: RetryAfter(resp),
 		}
 	}
 
-	var res ChatResult
+	var (
+		res         ChatResult
+		contentBuf  strings.Builder
+		thinkingBuf strings.Builder
+		nonSSEBuf   strings.Builder
+		sawSSEData  bool
+	)
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for scanner.Scan() {
@@ -116,8 +125,14 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 			continue // 事件分隔空行与网关 keep-alive 注释
 		}
 		if !strings.HasPrefix(line, "data:") {
-			continue // 非 SSE 行，容忍杂音
+			// 个别网关以 HTTP 200 直接返回普通 JSON 错误体（无 data: 前缀），暂存前 4KiB 兜底识别
+			if !sawSSEData && nonSSEBuf.Len() < 4096 {
+				nonSSEBuf.WriteString(line)
+				nonSSEBuf.WriteByte('\n')
+			}
+			continue
 		}
+		sawSSEData = true
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "[DONE]" {
 			break
@@ -128,10 +143,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 		}
 		if ch.Error != nil {
 			// 流内错误事件：转成 StatusError 参与退出码/故障转移分类
-			return nil, &StatusError{
-				Status: errEventCode(ch.Error.Code),
-				Body:   fmt.Sprintf("%s (type=%s)", ch.Error.Message, ch.Error.Type),
-			}
+			return nil, statusErrFromStreamError(ch.Error)
 		}
 		if ch.Usage != nil {
 			res.Usage = ch.Usage
@@ -140,11 +152,15 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 			continue
 		}
 		d := ch.Choices[0].Delta
-		if d.Content != "" || d.ReasoningContent != "" {
-			res.Content += d.Content
-			res.Thinking += d.ReasoningContent
+		reasoning := d.ReasoningContent
+		if reasoning == "" {
+			reasoning = d.Reasoning
+		}
+		if d.Content != "" || reasoning != "" {
+			contentBuf.WriteString(d.Content)
+			thinkingBuf.WriteString(reasoning)
 			if onDelta != nil {
-				onDelta(d.Content, d.ReasoningContent)
+				onDelta(d.Content, reasoning)
 			}
 		}
 		if ch.Choices[0].FinishReason != "" {
@@ -152,19 +168,44 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, onDe
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		if isTimeout(err) || errors.Is(err, context.DeadlineExceeded) {
+		if IsTimeout(err) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, &TimeoutError{Err: err}
 		}
 		return nil, fmt.Errorf("%s: %w", i18n.T("流中断", "stream interrupted"), err)
 	}
+	res.Content = contentBuf.String()
+	res.Thinking = thinkingBuf.String()
 	if res.Content == "" && res.Thinking == "" && res.FinishReason == "" {
+		if raw := strings.TrimSpace(nonSSEBuf.String()); raw != "" {
+			var plain struct {
+				Error *streamError `json:"error"`
+			}
+			if json.Unmarshal([]byte(raw), &plain) == nil && plain.Error != nil &&
+				(plain.Error.Message != "" || plain.Error.Type != "" || plain.Error.Code != nil) {
+				return nil, statusErrFromStreamError(plain.Error)
+			}
+			return nil, fmt.Errorf("%s（%s: %s）",
+				i18n.T("流式响应没有任何内容（网关异常）", "stream produced no content (gateway misbehaving)"),
+				i18n.T("响应片段", "response snippet"), OneLine(raw, 200))
+		}
 		return nil, fmt.Errorf("%s", i18n.T("流式响应没有任何内容（网关异常）", "stream produced no content (gateway misbehaving)"))
 	}
 	return &res, nil
 }
 
-// errEventCode 把流内 error 事件的 code 归一为 HTTP 状态语义（解析失败按 502 上游错误）。
-func errEventCode(v any) int {
+func statusErrFromStreamError(e *streamError) *StatusError {
+	body := fmt.Sprintf("%s (type=%s)", e.Message, e.Type)
+	if e.Code != nil && e.Code != "" {
+		body = fmt.Sprintf("%s (type=%s, code=%v)", e.Message, e.Type, e.Code)
+	}
+	return &StatusError{
+		Status: errEventCode(e.Code, e.Type),
+		Body:   Truncate(body, 400),
+	}
+}
+
+// errEventCode 把流内 error 事件的 code/type 归一为 HTTP 状态语义（解析失败按 502 上游错误）。
+func errEventCode(v any, errType string) int {
 	switch c := v.(type) {
 	case float64:
 		if c >= 100 && c < 600 {
@@ -174,6 +215,28 @@ func errEventCode(v any) int {
 		if n, err := strconv.Atoi(c); err == nil && n >= 100 && n < 600 {
 			return n
 		}
+		if mapped := mapErrorCodeString(c); mapped != 0 {
+			return mapped
+		}
+	}
+	if mapped := mapErrorCodeString(errType); mapped != 0 {
+		return mapped
 	}
 	return http.StatusBadGateway
+}
+
+func mapErrorCodeString(s string) int {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "model_not_found":
+		return http.StatusNotFound
+	case "invalid_api_key", "authentication_error", "unauthorized":
+		return http.StatusUnauthorized
+	case "insufficient_quota", "permission_denied", "forbidden":
+		return http.StatusForbidden
+	case "rate_limit_exceeded", "rate_limited":
+		return http.StatusTooManyRequests
+	case "invalid_request_error", "bad_request":
+		return http.StatusBadRequest
+	}
+	return 0
 }

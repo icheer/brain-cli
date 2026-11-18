@@ -86,6 +86,33 @@ func TestAskJSONErrorDetail(t *testing.T) {
 	}
 }
 
+// 429 响应体含 "for model ..." 时，--json 必须归类为 rate_limited/retryable=true 而非 model_not_found。
+func TestAskJSON429WithModelWordIsRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(429)
+		_, _ = w.Write([]byte(`{"error":{"message":"Rate limit reached for model m-a in organization org-x"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	setupConfig(t, srv.URL+"/v1")
+
+	code, out, errStr := runBrain("ask", "-m", "m-a", "--json", "q")
+	if code != 3 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	if strings.Contains(errStr, "相近的可用模型") {
+		t.Fatalf("429 不应给出相近模型建议: %q", errStr)
+	}
+	var got struct {
+		Error *askJSONError `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil || got.Error == nil {
+		t.Fatalf("解析 JSON: %v\n%s", err, out)
+	}
+	if got.Error.Code != 3 || got.Error.Type != "rate_limited" || !got.Error.Retryable {
+		t.Fatalf("429 error 分类不符: %+v", got.Error)
+	}
+}
+
 // --quiet：心跳/耗时/转移提示静默，错误与警告保留。
 func TestAskQuiet(t *testing.T) {
 	srv, _ := fakeGateway(t, 500, "x")

@@ -12,12 +12,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"sort"
@@ -56,14 +55,9 @@ var (
 	reV1BetaSuffix  = regexp.MustCompile(`/v1beta$`)
 )
 
-// OpenAIBase 把 base_url 归一到「已含版本段」形态（智能拼接）：末尾 /v<数字> 可写
-// 可不写——写了不重复拼，没写补 /v1（与 chat 的 base_url 约定一致）。
+// OpenAIBase 把 base_url 归一到「已含版本段」形态（智能拼接），复用 gateway 同名实现。
 func OpenAIBase(base string) string {
-	base = strings.TrimRight(base, "/")
-	if reVersionSuffix.MatchString(base) {
-		return base
-	}
-	return base + "/v1"
+	return gateway.OpenAIBase(base)
 }
 
 // GeminiBase 同理归一 /v1beta：已写则原样；写了 /v1（顶层 base_url 兜底进来的形态）
@@ -260,7 +254,7 @@ func (c *Client) openai(ctx context.Context, req *Request) (*Result, error) {
 			}
 		}
 		for _, r := range req.Refs {
-			fw, err := w.CreateFormFile("image[]", r.Name)
+			fw, err := createImagePart(w, "image[]", r.Name, r.MIME)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", i18n.T("构造 multipart 失败", "failed to build multipart"), err)
 			}
@@ -506,7 +500,7 @@ func (c *Client) post(ctx context.Context, endpoint, contentType string, body io
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		if isTimeout(err) {
+		if gateway.IsTimeout(err) {
 			return nil, &gateway.TimeoutError{Err: err}
 		}
 		return nil, fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
@@ -525,9 +519,9 @@ func (c *Client) post(ctx context.Context, endpoint, contentType string, body io
 			} `json:"error"`
 		}
 		if json.Unmarshal(data, &ge) == nil && ge.Error != nil && ge.Error.Code != 0 {
-			return nil, &gateway.StatusError{Status: ge.Error.Code, Body: ge.Error.Message}
+			return nil, &gateway.StatusError{Status: ge.Error.Code, Body: ge.Error.Message, RetryAfter: gateway.RetryAfter(resp)}
 		}
-		return nil, &gateway.StatusError{Status: resp.StatusCode, Body: snippet(data, 400), RetryAfter: retryAfter(resp)}
+		return nil, &gateway.StatusError{Status: resp.StatusCode, Body: snippet(data, 400), RetryAfter: gateway.RetryAfter(resp)}
 	}
 	return data, nil
 }
@@ -541,7 +535,7 @@ func (c *Client) download(ctx context.Context, rawURL string) ([]byte, string, e
 	req.Header.Set("User-Agent", gateway.UserAgent)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		if isTimeout(err) {
+		if gateway.IsTimeout(err) {
 			return nil, "", &gateway.TimeoutError{Err: err}
 		}
 		return nil, "", fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
@@ -561,26 +555,19 @@ func (c *Client) download(ctx context.Context, rawURL string) ([]byte, string, e
 	return data, mime, nil
 }
 
-// retryAfter 解析 Retry-After 头（秒数；非法返回 0）。与 gateway 包同构（429 场景）。
-func retryAfter(resp *http.Response) time.Duration {
-	v := strings.TrimSpace(resp.Header.Get("Retry-After"))
-	if v == "" {
-		return 0
-	}
-	var secs int
-	if _, err := fmt.Sscanf(v, "%d", &secs); err == nil && secs > 0 && secs < 3600 {
-		return time.Duration(secs) * time.Second
-	}
-	return 0
-}
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 
-// isTimeout 与 gateway 包同构：net.Error 超时或 ctx deadline。
-func isTimeout(err error) bool {
-	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
-		return true
+// createImagePart 创建携带真实图片 Content-Type 的 multipart 文件分块。
+// 标准库 CreateFormFile 硬编码 application/octet-stream，会被 OpenAI 官方 /v1/images/edits 400 拒绝。
+func createImagePart(w *multipart.Writer, fieldName, fileName, mimeType string) (io.Writer, error) {
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
 	}
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+		quoteEscaper.Replace(fieldName), quoteEscaper.Replace(fileName)))
+	h.Set("Content-Type", mimeType)
+	return w.CreatePart(h)
 }
 
 // decodeB64 宽容解码：标准表优先，缺 padding 的裸串回退 Raw 表（个别网关如此）。
@@ -604,13 +591,9 @@ func sniffMIME(data []byte) string {
 	return m
 }
 
-// snippet 截断展示（错误体/模型附言）。
+// snippet 截断展示（错误体/模型附言，UTF-8 字符边界安全）。
 func snippet(data []byte, n int) string {
-	s := strings.TrimSpace(string(data))
-	if len(s) > n {
-		return s[:n] + "…"
-	}
-	return s
+	return gateway.Truncate(strings.TrimSpace(string(data)), n)
 }
 
 // nonzero 取第一个非零值（openai usage 新旧字段名兼容）。

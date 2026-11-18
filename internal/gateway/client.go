@@ -9,16 +9,33 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/icheer/brain-cli/internal/i18n"
 )
 
 // UserAgent 由 cmd 层在启动时注入实际版本（默认 dev）。
 var UserAgent = "brain/dev"
+
+var reOpenAIVersionSuffix = regexp.MustCompile(`/(?:v\d+|v\d+beta/openai)$`)
+
+// OpenAIBase 把 base_url 归一到「已含版本段」形态（智能拼接）：末尾 /v<数字>
+// （或 Gemini 兼容端点 /v1beta/openai）可写可不写——写了不重复拼，没写补 /v1。
+func OpenAIBase(base string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" {
+		return ""
+	}
+	if reOpenAIVersionSuffix.MatchString(base) {
+		return base
+	}
+	return base + "/v1"
+}
 
 // Client 是网关最小 HTTP 客户端。
 type Client struct {
@@ -32,7 +49,7 @@ type Client struct {
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
 	return &Client{
 		HTTP:    &http.Client{Timeout: timeout},
-		BaseURL: strings.TrimRight(baseURL, "/"),
+		BaseURL: OpenAIBase(baseURL),
 		APIKey:  apiKey,
 	}
 }
@@ -93,7 +110,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		// 归一传输层错误：超时可辨识（exit 4），其余网络错误 exit 5
-		if isTimeout(err) {
+		if IsTimeout(err) {
 			return &TimeoutError{Err: err}
 		}
 		return fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
@@ -105,19 +122,19 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return fmt.Errorf("%s: %w", i18n.T("读取响应失败", "failed to read response"), err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &StatusError{Status: resp.StatusCode, Body: truncate(string(data), 400), RetryAfter: retryAfter(resp)}
+		return &StatusError{Status: resp.StatusCode, Body: Truncate(string(data), 400), RetryAfter: RetryAfter(resp)}
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
-			return fmt.Errorf("%s: %w（%s: %s）", i18n.T("解析网关响应失败", "failed to parse gateway response"), err, i18n.T("响应片段", "response snippet"), truncate(string(data), 200))
+			return fmt.Errorf("%s: %w（%s: %s）", i18n.T("解析网关响应失败", "failed to parse gateway response"), err, i18n.T("响应片段", "response snippet"), Truncate(string(data), 200))
 		}
 	}
 	return nil
 }
 
-// retryAfter 解析 Retry-After 头（秒数或 HTTP 日期；非法返回 0）。
-func retryAfter(resp *http.Response) time.Duration {
-	v := resp.Header.Get("Retry-After")
+// RetryAfter 解析 Retry-After 头（秒数或 HTTP 日期；非法返回 0）。
+func RetryAfter(resp *http.Response) time.Duration {
+	v := strings.TrimSpace(resp.Header.Get("Retry-After"))
 	if v == "" {
 		return 0
 	}
@@ -132,7 +149,8 @@ func retryAfter(resp *http.Response) time.Duration {
 	return 0
 }
 
-func isTimeout(err error) bool {
+// IsTimeout 判定传输层超时（net.Error 超时或 ctx deadline；不含主动取消 context.Canceled）。
+func IsTimeout(err error) bool {
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return true
@@ -140,9 +158,25 @@ func isTimeout(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded)
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
+// Truncate 按字节上限截断字符串，并严格对齐 UTF-8 字符边界（绝不切碎多字节汉字/emoji）；
+// 同时清理潜在非法 UTF-8 字节，防止污染 stderr 或 --json。
+func Truncate(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	s = strings.ToValidUTF8(s, "")
+	if len(s) <= maxBytes {
 		return s
 	}
-	return s[:n] + "…"
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
+}
+
+// OneLine 折叠换行并按 UTF-8 字符边界截断，供单行日志与 JSON 错误摘要使用。
+func OneLine(s string, maxBytes int) string {
+	s = strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(s), "\r\n", " "), "\n", " ")
+	return Truncate(s, maxBytes)
 }

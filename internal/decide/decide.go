@@ -14,11 +14,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/icheer/brain-cli/internal/draw"
 	"github.com/icheer/brain-cli/internal/gateway"
 	"github.com/icheer/brain-cli/internal/i18n"
 )
@@ -58,7 +57,7 @@ func New(baseURL, apiKey string, timeout time.Duration) *Client {
 
 // Endpoint 实际请求端点（dry-run 展示与请求共用；不含鉴权参数）。
 func (c *Client) Endpoint() string {
-	return draw.OpenAIBase(c.BaseURL) + "/systemone"
+	return gateway.OpenAIBase(c.BaseURL) + "/systemone"
 }
 
 // Do 执行一次决策请求：同模型重试（429 含 Retry-After/5xx/网络错误，至多 3 次尝试，
@@ -92,6 +91,9 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 		var se *gateway.StatusError
 		if errors.As(err, &se) && se.RetryAfter > 0 {
 			wait = se.RetryAfter // 429 的 Retry-After 优先
+		}
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= wait+100*time.Millisecond {
+			return nil, &gateway.TimeoutError{Err: context.DeadlineExceeded}
 		}
 		select {
 		case <-time.After(wait):
@@ -139,7 +141,7 @@ func (c *Client) post(ctx context.Context, body []byte, extraHeaders map[string]
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		if isTimeout(err) {
+		if gateway.IsTimeout(err) {
 			return nil, &gateway.TimeoutError{Err: err}
 		}
 		return nil, fmt.Errorf("%s: %w", i18n.T("网络错误", "network error"), err)
@@ -150,7 +152,7 @@ func (c *Client) post(ctx context.Context, body []byte, extraHeaders map[string]
 		return nil, fmt.Errorf("%s: %w", i18n.T("读取响应失败", "failed to read response"), err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &gateway.StatusError{Status: resp.StatusCode, Body: snippet(data, 400), RetryAfter: retryAfter(resp)}
+		return nil, &gateway.StatusError{Status: resp.StatusCode, Body: snippet(data, 400), RetryAfter: gateway.RetryAfter(resp)}
 	}
 	return data, nil
 }
@@ -265,35 +267,7 @@ func orderedObject(raw []byte) ([]struct {
 	return out, nil
 }
 
-// ---- 与 draw/gateway 同构的小助手 ----
-
-// retryAfter 解析 Retry-After 头（秒数；非法返回 0）。
-func retryAfter(resp *http.Response) time.Duration {
-	v := resp.Header.Get("Retry-After")
-	if v == "" {
-		return 0
-	}
-	var secs int
-	if _, err := fmt.Sscanf(v, "%d", &secs); err == nil && secs > 0 && secs < 3600 {
-		return time.Duration(secs) * time.Second
-	}
-	return 0
-}
-
-// isTimeout 与 gateway 包同构：net.Error 超时或 ctx deadline。
-func isTimeout(err error) bool {
-	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
-		return true
-	}
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
-}
-
-// snippet 截断展示（错误体片段）。
+// snippet 截断展示（错误体片段，UTF-8 字符边界安全）。
 func snippet(data []byte, n int) string {
-	s := string(data)
-	if len(s) > n {
-		return s[:n] + "…"
-	}
-	return s
+	return gateway.Truncate(strings.TrimSpace(string(data)), n)
 }

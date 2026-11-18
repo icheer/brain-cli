@@ -249,3 +249,49 @@ func TestEngineNoFallbackAfterOutput(t *testing.T) {
 		t.Fatalf("已输出正文后不得重试/切换（应仅 1 次调用），实际 %d", calls.Load())
 	}
 }
+
+// 429 错误体含 "for model xxx"（OpenAI 官方标准格式）时不得被误判为 model_not_found 跳过同模型重试。
+func TestEngine429WithModelWordStillRetries(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(429)
+			_, _ = w.Write([]byte(`{"error":{"message":"Rate limit reached for model gpt-5 in organization org-x","code":"rate_limit_exceeded"}}`))
+			return
+		}
+		sseOK(w)
+	}))
+	defer srv.Close()
+
+	e := &AskEngine{Client: gateway.New(srv.URL, "k", 5*time.Second), Stderr: &strings.Builder{}, RetryMax: 2}
+	res, used, err := e.Ask(context.Background(), []string{"gpt-5"},
+		func(m string) gateway.ChatRequest { return gateway.ChatRequest{Model: m} }, nil)
+	if err != nil || used != "gpt-5" || res.Content != "OK" {
+		t.Fatalf("429 含 model 字样应同模型重试成功: err=%v used=%q", err, used)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("应发起 2 次调用，实际 %d", calls.Load())
+	}
+}
+
+// 503 "The model is currently overloaded" 是上游过载而非模型不存在，应同模型退避重试。
+func TestEngine503ModelOverloadedStillRetries(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(503)
+			_, _ = w.Write([]byte(`{"error":{"message":"The model is currently overloaded, please try again later"}}`))
+			return
+		}
+		sseOK(w)
+	}))
+	defer srv.Close()
+
+	e := &AskEngine{Client: gateway.New(srv.URL, "k", 5*time.Second), Stderr: &strings.Builder{}, RetryMax: 1}
+	res, _, err := e.Ask(context.Background(), []string{"m-a"},
+		func(m string) gateway.ChatRequest { return gateway.ChatRequest{Model: m} }, nil)
+	if err != nil || res.Content != "OK" || calls.Load() != 2 {
+		t.Fatalf("503 overloaded 应重试同一模型: err=%v calls=%d", err, calls.Load())
+	}
+}

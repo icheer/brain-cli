@@ -36,10 +36,10 @@ func errorTypeInfo(err error) (typ string, retryable bool) {
 		switch {
 		case se.Status == 401 || se.Status == 403:
 			return "auth", false
-		case se.Status == 404, app.IsModelError(se):
-			return "model_not_found", false
 		case se.Status == 429:
 			return "rate_limited", true
+		case se.Status == 404, app.IsModelError(se):
+			return "model_not_found", false
 		case se.Status >= 500:
 			return "upstream", true
 		default: // 其余 4xx：请求本身非法（含模型不支持的 reasoning_effort 档位）

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // emitSSE 向响应写一个 SSE data 事件并立即 flush。
@@ -167,5 +168,89 @@ func TestStreamErrorEvent(t *testing.T) {
 	var se *StatusError
 	if !errors.As(err, &se) || se.Status != 404 || !strings.Contains(se.Body, "not found") {
 		t.Fatalf("流内 error 事件应映射 404 StatusError，得到 %v", err)
+	}
+}
+
+func TestStreamErrorEventStringModelNotFoundAndPlainJSON(t *testing.T) {
+	// 流内 code="model_not_found"（中文消息无英文 model 词）：直映 404 且 Body 保留 code
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"error\":{\"message\":\"当前分组无可用渠道\",\"type\":\"one_api_error\",\"code\":\"model_not_found\"}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k", 5*time.Second)
+	_, err := c.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"}, nil)
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != 404 || !strings.Contains(se.Body, "model_not_found") {
+		t.Fatalf("字符串 model_not_found 应映射 404 且保留 code，得到 %v", err)
+	}
+
+	// 脏网关 HTTP 200 直接返回非 SSE 的纯 JSON error 体
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		fmt.Fprint(w, `{"error":{"message":"Invalid token","type":"authentication_error","code":401}}`)
+	}))
+	defer srv2.Close()
+
+	c2 := New(srv2.URL, "k", 5*time.Second)
+	_, err = c2.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"}, nil)
+	if !errors.As(err, &se) || se.Status != 401 || !strings.Contains(se.Body, "Invalid token") {
+		t.Fatalf("HTTP 200 纯 JSON error 应归一为 StatusError(401)，得到 %v", err)
+	}
+}
+
+func TestStreamOpenRouterReasoningDelta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"reasoning": "先推演"}}}})
+		emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"reasoning": "再收敛"}}}})
+		emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"content": "结论"}}}})
+		emitSSE(w, map[string]any{"choices": []any{map[string]any{"delta": map[string]any{}, "finish_reason": "stop"}}})
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	var gotReasoning string
+	c := New(srv.URL, "k", 5*time.Second)
+	res, err := c.ChatCompletionStream(context.Background(), ChatRequest{Model: "m"},
+		func(_, reasoning string) { gotReasoning += reasoning })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Thinking != "先推演再收敛" || gotReasoning != "先推演再收敛" || res.Content != "结论" {
+		t.Fatalf("OpenRouter delta.reasoning 累积不符: %+v callback=%q", res, gotReasoning)
+	}
+}
+
+func TestTruncateAndOneLineUTF8Boundary(t *testing.T) {
+	s := "网关通道不可用：请检查配置"
+	for limit := 1; limit <= len(s)+3; limit++ {
+		got := Truncate(s, limit)
+		if !utf8.ValidString(got) {
+			t.Fatalf("limit=%d 截出了非法 UTF-8: %q", limit, got)
+		}
+	}
+	// 含非法字节与换行时同样保证合法单行 UTF-8
+	dirty := "第一行\r\n第二行" + string([]byte{0xff, 0xfe}) + "尾部汉字"
+	clean := OneLine(dirty, 16)
+	if !utf8.ValidString(clean) || strings.Contains(clean, "\n") {
+		t.Fatalf("OneLine 未清理非法字节或换行: %q", clean)
+	}
+}
+
+func TestOpenAIBaseJoin(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://api.openai.com":                                   "https://api.openai.com/v1",
+		"https://api.openai.com/":                                  "https://api.openai.com/v1",
+		"https://api.openai.com/v1":                                "https://api.openai.com/v1",
+		"https://open.bigmodel.cn/api/paas/v4":                     "https://open.bigmodel.cn/api/paas/v4",
+		"https://generativelanguage.googleapis.com/v1beta/openai/": "https://generativelanguage.googleapis.com/v1beta/openai",
+	} {
+		if got := OpenAIBase(in); got != want {
+			t.Errorf("OpenAIBase(%q)=%q want %q", in, got, want)
+		}
 	}
 }

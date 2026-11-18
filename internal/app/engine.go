@@ -95,10 +95,13 @@ func actionFor(ctx context.Context, err error) errAction {
 		switch {
 		case se.Status == 401 || se.Status == 403:
 			return actionFatal // 第 0 节：401/403 不切模型
+		case se.Status == 429:
+			// 429 优先于模型错误判定（OpenAI 标准限流正文含 "for model xxx"，不能误判换模型跳过退避）
+			return actionRetrySame
 		case se.Status == 404, IsModelError(se):
 			// 真实网关实测：模型不存在也会以 503 + code=model_not_found 出现，勿按 5xx 重试
 			return actionNextModel
-		case se.Status == 429, se.Status >= 500:
+		case se.Status >= 500:
 			return actionRetrySame
 		default: // 其余 4xx 视为模型/请求相关，换模型尝试
 			return actionNextModel
@@ -133,20 +136,40 @@ func (e *AskEngine) backoff(err error, attempt int, ctx context.Context) (time.D
 	return d, true
 }
 
-// IsModelError 粗判错误是否与模型选择有关（404 或错误体提到 model），
-// 供 cmd 层在最终失败时给出「相近可用模型」建议。
+// IsModelError 判定错误是否与模型不存在/无可用渠道有关（404 或明确的模型不可用特征），
+// 供 AskEngine 立即切换模型及 cmd 层在最终失败时给出「相近可用模型」建议。
+// 注意：不能宽泛匹配 "model" 单词——429 限流与 503 过载响应常含 "for model xxx" / "model overloaded"。
 func IsModelError(se *gateway.StatusError) bool {
+	if se.Status == 401 || se.Status == 403 || se.Status == 429 {
+		return false
+	}
 	if se.Status == 404 {
 		return true
 	}
-	return strings.Contains(strings.ToLower(se.Body), "model")
+	b := strings.ToLower(se.Body)
+	for _, kw := range []string{
+		"model_not_found",
+		"model not found",
+		"no such model",
+		"does not exist",
+		"unknown model",
+		"invalid model",
+		"unsupported model",
+		"model is not supported",
+		"no available channel",
+		"no available account",
+		"无可用渠道",
+		"模型不存在",
+		"未找到模型",
+	} {
+		if strings.Contains(b, kw) {
+			return true
+		}
+	}
+	return false
 }
 
-// shortErr stderr 提示用的单行短错误。
+// shortErr stderr 提示用的单行短错误（UTF-8 字符边界安全）。
 func shortErr(err error) string {
-	s := strings.ReplaceAll(err.Error(), "\n", " ")
-	if len(s) > 80 {
-		s = s[:80] + "…"
-	}
-	return s
+	return gateway.OneLine(err.Error(), 80)
 }

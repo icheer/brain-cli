@@ -239,6 +239,9 @@ func TestOpenAIEditsMultipart(t *testing.T) {
 	if len(files) != 2 {
 		t.Fatalf("image[] files=%d want 2", len(files))
 	}
+	if ct := files[0].Header.Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("image[] part Content-Type=%q want image/png（application/octet-stream 会被官方 edits 400 拒绝）", ct)
+	}
 	f0, _ := files[0].Open()
 	got, _ := io.ReadAll(f0)
 	f0.Close()
