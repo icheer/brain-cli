@@ -40,15 +40,16 @@ type councilOptions struct {
 	jsonOut         bool
 	quiet           bool
 	dryRun          bool
+	blind           bool
 }
 
-var councilOpts councilOptions
-
-var councilCmd = &cobra.Command{
-	Use: "council -m <model>... [-r rounds] [prompt...]",
-	Short: i18n.T("多模型串行辩论：首轮并行盲评、后续蛇形交锋，发言记录逐轮递增，stdout 按轮次分隔输出原文",
-		"Multi-model serial debate: blind-parallel round 1, snake-serial rounds after; growing transcript, stdout sectioned by round"),
-	Long: i18n.T(`串行辩论：2-N 个模型围绕同一背景材料多轮讨论。混合拓扑——第 1 轮并行盲评
+func newCouncilCmd() *cobra.Command {
+	opts := &councilOptions{}
+	councilCmd := &cobra.Command{
+		Use: "council -m <model>... [-r rounds] [prompt...]",
+		Short: i18n.T("多模型串行辩论：首轮并行盲评、后续蛇形交锋，发言记录逐轮递增，stdout 按轮次分隔输出原文",
+			"Multi-model serial debate: blind-parallel round 1, snake-serial rounds after; growing transcript, stdout sectioned by round"),
+		Long: i18n.T(`串行辩论：2-N 个模型围绕同一背景材料多轮讨论。混合拓扑——第 1 轮并行盲评
 （席位间互不可见，消灭首轮锚定），第 2..R 轮串行交锋，发言顺序默认蛇形（偶数轮反转，均衡先手/
 末位优势；--order rotate=每轮起始席位前移一位、fixed=恒解析序）；发言记录逐轮递增，后发言者可评价先发言者；末轮为收尾轮（最终立场/观点
 变化/残余分歧）。裁决与综合留给你（宿主）——brain 不内建裁判。
@@ -56,7 +57,8 @@ var councilCmd = &cobra.Command{
 -m 与 compare 同构：别名=模型组快捷方式（展开整组），可重复/逗号分隔，跨来源去重后
 需 ≥2；席位以 model_name 为唯一 ID（同一模型不重复占席）。上下文组装与 ask 相同
 （位置参数 / -f / -i / stdin），-s 追加在议事规则之后。透镜/立场无需专用语法：把
-「席位-透镜表」写进上下文即可（见 SKILL.md）。
+「席位-透镜表」写进上下文即可（见 SKILL.md）；加 --blind 时席位全程以 Model_A/B/… 匿名
+参会与输出（消除厂牌顺从效应与裁决偏见，透镜表可直接写 Model_A=...）。
 
 成本与时长：总调用 = 席位数 × 轮次；第 r 轮每次发言的输入 ≈ 固定上下文 + (r-1)×N
 次已积累发言。--timeout 是单次发言调用的预算（墙钟上限 ≈ R × timeout）。一次任务
@@ -68,6 +70,7 @@ var councilCmd = &cobra.Command{
 
   brain council -m reason -m coding "评审方案A的取舍"
   brain council -m reason -r 3 "深挖这个架构决策的分歧"
+  brain council -m panel --blind "匿名辩论方案风险"
   brain council -m fast --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'`, `Serial debate: 2-N models discuss the same background material over multiple rounds.
 Hybrid topology — round 1 is parallel and blind (seats cannot see each other, killing
 first-speaker anchoring); rounds 2..R are serial with snake order by default (reversed on even
@@ -81,7 +84,9 @@ ships no built-in judge.
 repeatable / comma-separated, deduped across sources, must resolve to >= 2; a seat's
 model_name is its unique ID (one model never occupies two seats). Context assembly matches
 ask (positional args / -f / -i / stdin); -s is appended after the council rules. Lenses or
-stances need no dedicated syntax: write a "seat-to-lens table" into the context (see SKILL.md).
+stances need no dedicated syntax: write a "seat-to-lens table" into the context (see SKILL.md);
+with --blind, seats participate and output anonymously as Model_A/B/... (suppressing brand
+deference and host bias; lens tables may address Model_A=... directly).
 
 Cost and wall clock: total calls = seats x rounds; a round-r speech carries the fixed
 context plus the (r-1) x N accumulated speeches. --timeout is the per-speech budget
@@ -95,50 +100,55 @@ actionable exit code; SIGINT dumps the accumulated speeches and exits 130. Examp
 
   brain council -m reason -m coding "trade-offs of plan A"
   brain council -m reason -r 3 "dig into the disagreements on this architecture decision"
+  brain council -m panel --blind "blind debate on plan risks"
   brain council -m fast --json "discuss" | jq -r '.transcript[] | select(.ok) | .content'`),
-	Args: cobra.ArbitraryArgs,
-	RunE: runCouncil,
-}
-
-func init() {
-	councilCmd.Flags().StringArrayVarP(&councilOpts.models, "model", "m", nil,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCouncil(cmd, args, opts)
+		},
+	}
+	councilCmd.Flags().StringArrayVarP(&opts.models, "model", "m", nil,
 		i18n.T("模型别名（展开为整组）或字面模型 ID，可重复且支持逗号分隔；至少展开出 2 个模型",
 			"model alias (expands to its whole group) or literal model ID; repeatable, comma-separated; must resolve to >= 2 models"))
-	councilCmd.Flags().IntVarP(&councilOpts.rounds, "rounds", "r", 2,
+	councilCmd.Flags().IntVarP(&opts.rounds, "rounds", "r", 2,
 		i18n.T("轮次预算，每席位每轮发言一次（默认 2：并行立论 + 蛇形交锋收尾；1=单轮并行盲评，等价 compare）",
 			"round budget; each seat speaks once per round (default 2: blind-parallel opening + snake-serial closing; 1 = a single blind-parallel round, equivalent to compare)"))
-	councilCmd.Flags().StringVar(&councilOpts.order, "order", "snake",
+	councilCmd.Flags().StringVar(&opts.order, "order", "snake",
 		i18n.T("第 2 轮起的发言顺序排布：snake=蛇形（默认，偶数轮反转，末位红利与开轮义务同席结清）；rotate=轮转（每轮起始席位前移一位，无人连续发言）；fixed=恒解析序",
 			"speaking-order layout from round 2 on: snake = default (reversed on even rounds; last-mover perk pairs with next round's opening duty); rotate = starting seat advances one per round (no back-to-back speakers); fixed = resolution order"))
-	councilCmd.Flags().StringArrayVarP(&councilOpts.files, "file", "f", nil,
+	councilCmd.Flags().StringArrayVarP(&opts.files, "file", "f", nil,
 		i18n.T("文本文件，可多次", "text file, repeatable"))
-	councilCmd.Flags().StringArrayVarP(&councilOpts.images, "image", "i", nil,
+	councilCmd.Flags().StringArrayVarP(&opts.images, "image", "i", nil,
 		i18n.T("图片（本地路径或 URL），可多次", "image (local path or URL), repeatable"))
-	councilCmd.Flags().StringArrayVarP(&councilOpts.system, "system", "s", nil,
+	councilCmd.Flags().StringArrayVarP(&opts.system, "system", "s", nil,
 		i18n.T("追加在议事规则之后的系统提示词，可重复（以空行连接；适合席位-透镜表）",
 			"system prompt appended after the council rules, repeatable (joined by a blank line; good for a seat-to-lens table)"))
-	councilCmd.Flags().IntVar(&councilOpts.timeout, "timeout", 0,
+	councilCmd.Flags().IntVar(&opts.timeout, "timeout", 0,
 		i18n.T("单次发言调用的超时秒数（含重试；总墙钟 ≈ 轮次 × 该值；覆盖 config）",
 			"timeout per speech call in seconds, incl. retries (total wall clock ≈ rounds x this; overrides config)"))
-	councilCmd.Flags().Int64Var(&councilOpts.maxInputBytes, "max-input-bytes", 0,
+	councilCmd.Flags().Int64Var(&opts.maxInputBytes, "max-input-bytes", 0,
 		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
-	councilCmd.Flags().StringVarP(&councilOpts.reasoningEffort, "reasoning-effort", "e", "",
+	councilCmd.Flags().StringVarP(&opts.reasoningEffort, "reasoning-effort", "e", "",
 		i18n.T("推理深度纯透传（档位因模型而异；不设则用各模型默认）",
 			"reasoning effort, passed through as-is (model-specific tiers; unset = model default)"))
-	councilCmd.Flags().IntVar(&councilOpts.maxOutputTokens, "max-output-tokens", 0,
+	councilCmd.Flags().IntVar(&opts.maxOutputTokens, "max-output-tokens", 0,
 		i18n.T("输出预算（max_tokens）纯透传：约束单次发言长度；0=不传用网关默认",
 			"output budget (max_tokens), passed through as-is: caps each speech; 0 = omit, gateway default"))
-	councilCmd.Flags().StringArrayVar(&councilOpts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
-	councilCmd.Flags().StringArrayVar(&councilOpts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
-	councilCmd.Flags().BoolVarP(&councilOpts.quiet, "quiet", "q", false,
+	councilCmd.Flags().StringArrayVar(&opts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
+	councilCmd.Flags().StringArrayVar(&opts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
+	councilCmd.Flags().BoolVarP(&opts.quiet, "quiet", "q", false,
 		i18n.T("静默 stderr：关闭心跳/进度/耗时提示（警告与错误保留）",
 			"quiet stderr: no heartbeat/progress/elapsed chatter (warnings and errors kept)"))
-	councilCmd.Flags().BoolVar(&councilOpts.dryRun, "dry-run", false,
+	councilCmd.Flags().BoolVar(&opts.dryRun, "dry-run", false,
 		i18n.T("输出议事规则、轮次调度表与首位席位的实际 messages（单行 JSON），不发起网络请求",
 			"print the council rules, the round schedule and the first seat's actual messages (single-line JSON) without any network call"))
-	councilCmd.Flags().BoolVar(&councilOpts.jsonOut, "json", false,
+	councilCmd.Flags().BoolVar(&opts.blind, "blind", false,
+		i18n.T("匿名辩论：议事提示词、发言记录与输出中席位均替换为 Model_A/B/…（真名映射走 stderr），消除辩手互评与宿主裁决的品牌偏见",
+			"blind debate: replace seat names with Model_A/B/... in prompts, transcript and output (real names on stderr), removing brand bias in peer critique and host adjudication"))
+	councilCmd.Flags().BoolVar(&opts.jsonOut, "json", false,
 		i18n.T("单行 JSON 输出（成败恒定一个对象：status/usage 合计/transcript[] 每次发言含 content/usage/latency/error）",
 			"single-line JSON output (always exactly one object: status, summed usage, and a transcript[] with content/usage/latency/error per speech)"))
+	return councilCmd
 }
 
 // councilSpeech 是一次发言的账目（成功或失败都占一席，顺序=发言时间序）。
@@ -166,13 +176,15 @@ type councilJSON struct {
 }
 
 type councilJSONSpeech struct {
-	Round     int            `json:"round"`
-	Speaker   string         `json:"speaker"`
-	OK        bool           `json:"ok"`
-	Content   string         `json:"content,omitempty"`
-	Usage     *gateway.Usage `json:"usage"`
-	LatencyMs int64          `json:"latency_ms"`
-	Error     *askJSONError  `json:"error,omitempty"`
+	Round        int            `json:"round"`
+	Speaker      string         `json:"speaker"`
+	OK           bool           `json:"ok"`
+	Content      string         `json:"content,omitempty"`
+	Thinking     string         `json:"thinking,omitempty"`
+	Usage        *gateway.Usage `json:"usage"`
+	LatencyMs    int64          `json:"latency_ms"`
+	FinishReason string         `json:"finish_reason,omitempty"`
+	Error        *askJSONError  `json:"error,omitempty"`
 }
 
 // councilDryRunOut 是 council --dry-run 的输出结构。
@@ -333,7 +345,7 @@ func seatOrder(seats []string, round int, order string) []int {
 	return idx
 }
 
-func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
+func runCouncil(cmd *cobra.Command, args []string, councilOpts *councilOptions) (retErr error) {
 	stdout := cmd.OutOrStdout()
 	stderr := &lockedWriter{w: cmd.ErrOrStderr()}
 
@@ -453,7 +465,26 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 				"council needs >= 2 seats, but only %d resolved (%s); repeat -m or use commas; aliases expand to their whole group",
 				len(models), strings.Join(models, ", ")))
 	}
-	payload.Models = models
+
+	// 盲测映射（--blind）：席位在议事规则、发言记录、stdout 与 --json 中统一用 Model_A/B/…，
+	// 既阻断模型间的厂牌顺从/偏见，也阻断宿主裁决偏见；真名映射仅走 stderr。
+	seatNames := models
+	labels := map[string]string{}
+	var blindPairs []string
+	if councilOpts.blind {
+		seatNames = make([]string, len(models))
+		blindPairs = make([]string, 0, len(models))
+		for i, m := range models {
+			l := fmt.Sprintf("Model_%d", i+1)
+			if i < 26 {
+				l = fmt.Sprintf("Model_%c", 'A'+i)
+			}
+			labels[m] = l
+			seatNames[i] = l
+			blindPairs = append(blindPairs, l+"="+m)
+		}
+	}
+	payload.Models = seatNames
 
 	// 固定上下文：与 ask 同一套装配（-s 不走 assembleMessages，并入议事规则之后）
 	messages, textBytes, err := assembleMessages(args, councilOpts.files, councilOpts.images, nil, cfg.MaxInputBytes)
@@ -472,6 +503,9 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			}
 		}
 	}
+	sysJoined := strings.Join(councilOpts.system, "\n\n")
+	warnAliasInCouncilSystem(stderr, names, models, seatNames, cfg.Aliases, sysJoined)
+
 	// 模板语言跟随内容（含 -s 透镜表）：汉字占比 >2% 即中文模板，否则英文
 	var textSample string
 	for _, p := range ctxParts {
@@ -480,20 +514,20 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			break
 		}
 	}
-	lang := councilLang(chineseRatio(textSample+"\n"+strings.Join(councilOpts.system, "\n\n")) > 0.02)
-	rules := councilRules(models, councilOpts.rounds, strings.Join(councilOpts.system, "\n\n"), lang)
+	lang := councilLang(chineseRatio(textSample+"\n"+sysJoined) > 0.02)
+	rules := councilRules(seatNames, councilOpts.rounds, sysJoined, lang)
 
 	if councilOpts.dryRun {
 		schedule := make([][]string, 0, councilOpts.rounds)
 		for r := 1; r <= councilOpts.rounds; r++ {
-			row := make([]string, 0, len(models))
-			for _, i := range seatOrder(models, r, councilOpts.order) {
-				row = append(row, models[i])
+			row := make([]string, 0, len(seatNames))
+			for _, i := range seatOrder(seatNames, r, councilOpts.order) {
+				row = append(row, seatNames[i])
 			}
 			schedule = append(schedule, row)
 		}
 		out, _ := json.Marshal(councilDryRunOut{
-			Models:          models,
+			Models:          seatNames,
 			Rounds:          councilOpts.rounds,
 			Order:           councilOpts.order,
 			ReasoningEffort: councilOpts.reasoningEffort,
@@ -503,10 +537,14 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			TextBytes:       textBytes,
 			System:          rules,
 			Schedule:        schedule,
-			Messages:        redactMessages(buildCouncilMessages(rules, ctxParts, models[0], 1, councilOpts.rounds, nil, lang)),
+			Messages:        redactMessages(buildCouncilMessages(rules, ctxParts, seatNames[0], 1, councilOpts.rounds, nil, lang)),
 		})
 		fmt.Fprintln(stdout, string(out))
 		return nil
+	}
+
+	if councilOpts.blind {
+		fmt.Fprintf(stderr, "brain: %s: %s\n", i18n.T("盲测映射（--blind）", "blind mapping (--blind)"), strings.Join(blindPairs, "  "))
 	}
 
 	// 信号取消父 ctx（SIGINT/SIGTERM → 中断路径：dump 已积累发言 + exit 130）；
@@ -518,7 +556,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 	budget := time.Duration(cfg.TimeoutSeconds) * time.Second
 	client := gateway.New(cfg.BaseURL, cfg.APIKey, budget)
 	engineStderr := io.Writer(stderr)
-	if councilOpts.quiet {
+	if councilOpts.quiet || councilOpts.blind {
 		engineStderr = io.Discard
 	}
 
@@ -545,14 +583,16 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 		}()
 	}
 
-	// askSeat 对某席位发起一次发言调用：单元素链（无跨模型故障转移，同模型重试照旧）
-	askSeat := func(seat string, round int, transcript []councilSpeech) councilSpeech {
+	// askSeat 对某席位发起一次发言调用：单元素链（无跨模型故障转移，同模型重试照旧）；
+	// sp.Model 存公开席位名（普通模式=真实模型 ID，--blind 模式=Model_A/B/…），
+	// 使后续轮次的 <speech seat="...">、stdout 分隔头与 --json 自动保持匿名一致。
+	askSeat := func(realModel, seatLabel string, round int, transcript []councilSpeech) councilSpeech {
 		ctx, cancel := context.WithTimeout(parentCtx, budget)
 		defer cancel()
 		eng := &app.AskEngine{Client: client, Stderr: engineStderr, RetryMax: cfg.RetryMax}
 		start := time.Now()
-		msgs := buildCouncilMessages(rules, ctxParts, seat, round, councilOpts.rounds, transcript, lang)
-		res, _, err := eng.Ask(ctx, []string{seat},
+		msgs := buildCouncilMessages(rules, ctxParts, seatLabel, round, councilOpts.rounds, transcript, lang)
+		res, _, err := eng.Ask(ctx, []string{realModel},
 			func(m string) gateway.ChatRequest {
 				return gateway.ChatRequest{
 					Model:           m,
@@ -565,7 +605,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			},
 			func(content, reasoning string) {})
 		doneSp.Add(1)
-		sp := councilSpeech{Round: round, Model: seat, LatencyMs: time.Since(start).Milliseconds()}
+		sp := councilSpeech{Round: round, Model: seatLabel, LatencyMs: time.Since(start).Milliseconds()}
 		if err != nil {
 			sp.Err = err
 			return sp
@@ -586,8 +626,11 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 	record := func(sp councilSpeech, idx int) {
 		transcript = append(transcript, sp)
 		if councilOpts.jsonOut {
-			entry := councilJSONSpeech{Round: sp.Round, Speaker: sp.Model, OK: sp.OK,
-				Content: sp.Content, Usage: sp.Usage, LatencyMs: sp.LatencyMs}
+			entry := councilJSONSpeech{
+				Round: sp.Round, Speaker: sp.Model, OK: sp.OK,
+				Content: sp.Content, Thinking: sp.Thinking, FinishReason: sp.FinishReason,
+				Usage: sp.Usage, LatencyMs: sp.LatencyMs,
+			}
 			if !sp.OK {
 				c := exitCodeFor(sp.Err)
 				e := &askJSONError{Code: c, Message: firstLine(sp.Err.Error())}
@@ -634,12 +677,12 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 			// 第 1 轮并行盲评（compare 机制复用：transcript 为空，各席位互不可见）
 			results := make([]councilSpeech, len(models))
 			var wg sync.WaitGroup
-			for i, seat := range models {
+			for i := range models {
 				wg.Add(1)
-				go func(i int, seat string) {
+				go func(i int) {
 					defer wg.Done()
-					results[i] = askSeat(seat, 1, nil)
-				}(i, seat)
+					results[i] = askSeat(models[i], seatNames[i], 1, nil)
+				}(i)
 			}
 			wg.Wait()
 			for i := range results { // transcript 按解析序落账（stdout 确定性）
@@ -654,7 +697,7 @@ func runCouncil(cmd *cobra.Command, args []string) (retErr error) {
 					stopped = true
 					break
 				}
-				record(askSeat(models[i], r, transcript), i)
+				record(askSeat(models[i], seatNames[i], r, transcript), i)
 			}
 		}
 		if wasInterrupted() {
@@ -787,4 +830,106 @@ func worstErrCode(errs []error) int {
 		}
 	}
 	return best
+}
+
+// warnAliasInCouncilSystem 检测「在 -s 席位透镜表里误写别名而非实际席位名」的高频静默陷阱：
+// 若 -s 未包含任何实际席位名（展开后的模型 ID 或 --blind 的 Model_A/B），但以表键或透镜语境
+// 引用了本次使用的别名，则在 stderr 给出明确告警（普通英文形容词如 "be fast" 不误报）。
+func warnAliasInCouncilSystem(stderr io.Writer, rawNames, resolvedModels, seatNames []string, aliases map[string]config.Alias, sys string) {
+	if strings.TrimSpace(sys) == "" || len(aliases) == 0 {
+		return
+	}
+	for _, s := range seatNames {
+		if s != "" && strings.Contains(sys, s) {
+			return
+		}
+	}
+	for _, m := range resolvedModels {
+		if m != "" && strings.Contains(sys, m) {
+			return
+		}
+	}
+
+	var usedAliases []string
+	seen := map[string]bool{}
+	for _, raw := range rawNames {
+		for _, tok := range strings.Split(raw, ",") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" || seen[tok] {
+				continue
+			}
+			if _, ok := aliases[tok]; ok {
+				seen[tok] = true
+				usedAliases = append(usedAliases, tok)
+			}
+		}
+	}
+	if len(usedAliases) == 0 {
+		return
+	}
+
+	lowerSys := strings.ToLower(sys)
+	hasLensKeyword := false
+	for _, kw := range []string{"透镜", "席位", "视角", "立场", "扮演", "lens", "seat", "stance", "perspective"} {
+		if strings.Contains(lowerSys, kw) {
+			hasLensKeyword = true
+			break
+		}
+	}
+
+	for _, a := range usedAliases {
+		if hasAliasAssignmentKey(sys, a) || (hasLensKeyword && hasStandaloneToken(sys, a)) {
+			fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("警告:", "warning:"),
+				i18n.Tf("-s 中出现了别名 %q，但未包含任何实际席位名（%s）——席位只认领自己的席位名，别名透镜不会生效",
+					"-s mentions alias %q without any actual seat ID (%s) — seats only claim their resolved seat IDs, so alias lenses have no effect",
+					a, strings.Join(seatNames, ", ")))
+			return
+		}
+	}
+}
+
+func isIdentByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_' || b == '-' || b == '/' || b == '.'
+}
+
+// hasAliasAssignmentKey 判断 s 中是否出现 alias= / alias: / alias： / [alias] 等典型键值/表头写法。
+func hasAliasAssignmentKey(s, alias string) bool {
+	for _, pat := range []string{
+		alias + "=", alias + " =", alias + ":", alias + " :", alias + "：",
+		"[" + alias + "]", "`" + alias + "`", `"` + alias + `"`, "「" + alias + "」",
+	} {
+		idx := 0
+		for {
+			pos := strings.Index(s[idx:], pat)
+			if pos < 0 {
+				break
+			}
+			abs := idx + pos
+			if abs == 0 || !isIdentByte(s[abs-1]) {
+				return true
+			}
+			idx = abs + len(alias)
+		}
+	}
+	return false
+}
+
+// hasStandaloneToken 判断 alias 是否作为独立词元出现（防 "reason" 命中英文单词 "reasoning"）。
+func hasStandaloneToken(s, alias string) bool {
+	idx := 0
+	for {
+		pos := strings.Index(s[idx:], alias)
+		if pos < 0 {
+			break
+		}
+		abs := idx + pos
+		end := abs + len(alias)
+		leftOK := abs == 0 || !isIdentByte(s[abs-1])
+		rightOK := end == len(s) || !isIdentByte(s[end])
+		if leftOK && rightOK {
+			return true
+		}
+		idx = end
+	}
+	return false
 }

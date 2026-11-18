@@ -37,6 +37,32 @@ func OpenAIBase(base string) string {
 	return base + "/v1"
 }
 
+var sharedTransport = func() *http.Transport {
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		tr := dt.Clone()
+		tr.MaxIdleConns = 64
+		tr.MaxIdleConnsPerHost = 16
+		tr.TLSHandshakeTimeout = 10 * time.Second
+		return tr
+	}
+	return &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		MaxIdleConns:        64,
+		MaxIdleConnsPerHost: 16,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+	}
+}()
+
+// NewHTTPClient 构造复用全局连接池的 HTTP 客户端：调大单域名并发空闲连接上限（默认仅 2），
+// 支撑 compare/council 同网关并发采样与多轮连接复用，并限制 TLS 握手超时防死挂。
+func NewHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: sharedTransport,
+	}
+}
+
 // Client 是网关最小 HTTP 客户端。
 type Client struct {
 	HTTP    *http.Client
@@ -48,7 +74,7 @@ type Client struct {
 // 重试/故障转移的总预算由调用方通过 ctx deadline 控制。
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
 	return &Client{
-		HTTP:    &http.Client{Timeout: timeout},
+		HTTP:    NewHTTPClient(timeout),
 		BaseURL: OpenAIBase(baseURL),
 		APIKey:  apiKey,
 	}

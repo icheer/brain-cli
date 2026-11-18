@@ -6,12 +6,8 @@ import (
 	"testing"
 )
 
-// 英文界面：BRAIN_LANG=en 时错误提示输出英文（锁定语言切换路径）。
+// 英文界面：BRAIN_LANG=en 时错误提示与命令/flag 帮助均输出英文（验证 newRootCmd 动态 i18n，不再冻结于 init 期）。
 func TestEnglishMessages(t *testing.T) {
-	// cobra 复用命令对象，先清掉其他测试残留的 flag 值（本测试不经 setupConfig）
-	askOpts = askOptions{}
-	compareOpts = compareOptions{}
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	t.Setenv("BRAIN_LANG", "en")
 	t.Setenv("BRAIN_CONFIG", filepath.Join(t.TempDir(), "absent.yaml"))
 	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY"} {
@@ -21,6 +17,17 @@ func TestEnglishMessages(t *testing.T) {
 	code, _, errStr := runBrain("ask", "q")
 	if code != 7 || !strings.Contains(errStr, "missing base_url") {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+
+	// 动态 --help：同进程内先 en 后 zh 切换，均按当次 BRAIN_LANG 构造帮助树
+	code, helpEn, _ := runBrain("council", "--help")
+	if code != 0 || !strings.Contains(helpEn, "Serial debate") || !strings.Contains(helpEn, "blind debate") {
+		t.Fatalf("BRAIN_LANG=en 下 council --help 应为英文: code=%d out=%s", code, helpEn)
+	}
+	t.Setenv("BRAIN_LANG", "zh")
+	code, helpZh, _ := runBrain("council", "--help")
+	if code != 0 || !strings.Contains(helpZh, "串行辩论") || !strings.Contains(helpZh, "匿名辩论") {
+		t.Fatalf("BRAIN_LANG=zh 下 council --help 应为中文: code=%d out=%s", code, helpZh)
 	}
 
 	srv, _ := fakeGateway(t, 200, "x")

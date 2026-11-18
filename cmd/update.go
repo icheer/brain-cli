@@ -32,24 +32,26 @@ type updateOptions struct {
 	skillDir string
 }
 
-var updateOpts updateOptions
-
-// 可注入点（测试用）：版本查询端点、当前版本、实路径探测、家目录。
+// 可注入点（测试用）：版本查询端点、302 兜底地址、当前版本、实路径探测、家目录。
 var (
-	updateAPIBase    = "https://api.github.com/repos/icheer/brain-cli/releases/latest"
-	updateVersionFn  = func() string { return version }
-	updateExePathFn  = os.Executable
-	updateHomeDirFn  = os.UserHomeDir
+	updateAPIBase     = "https://api.github.com/repos/icheer/brain-cli/releases/latest"
+	updateRedirectURL = "https://github.com/icheer/brain-cli/releases/latest"
+	updateVersionFn   = func() string { return version }
+	updateExePathFn   = os.Executable
+	updateHomeDirFn   = os.UserHomeDir
 )
 
-var updateCmd = &cobra.Command{
-	Use:   "update [--check] [--skill-dir <dir>]",
-	Short: i18n.T("就地升级：找到技能目录后委托 install.sh 更新二进制/SKILL.md/安装器自身",
-		"self-upgrade: locate the skill dir and delegate to install.sh (binary / SKILL.md / installer)"),
-	Long: i18n.T(`就地升级 brain（无需手动定位技能目录）：
+func newUpdateCmd() *cobra.Command {
+	opts := &updateOptions{}
+	updateCmd := &cobra.Command{
+		Use:   "update [--check] [--skill-dir <dir>]",
+		Short: i18n.T("就地升级：找到技能目录后委托 install.sh 更新二进制/SKILL.md/安装器自身",
+			"self-upgrade: locate the skill dir and delegate to install.sh (binary / SKILL.md / installer)"),
+		Long: i18n.T(`就地升级 brain（无需手动定位技能目录）：
   1. 发现技能目录：--skill-dir 显式指定，或从自身实路径（解析软链）向上找
      SKILL.md+install.sh，或探测 ~/.claude|~/.codex|~/.agents/skills/brain
-  2. 向 GitHub 查询最新版本并与当前比对（--check 只查不更）
+  2. 向 GitHub 查询最新版本并与当前比对（--check 只查不更；支持 GITHUB_TOKEN/GH_TOKEN，
+     API 限流时自动回退 302 重定向解析 tag）
   3. 委托技能目录的 install.sh 完成升级（其形态检测顺带处理全局软链/双副本，
      并同步 SKILL.md 与安装器自身）；退出码原样转发
 
@@ -61,7 +63,8 @@ install.sh 自身的退出码原样转发。`, `Upgrade brain in place (no need 
      real path (symlinks resolved) looking for SKILL.md+install.sh, or probe
      ~/.claude|~/.codex|~/.agents/skills/brain
   2. Check the latest release on GitHub against the current version
-     (--check only checks, never downloads)
+     (--check only checks, never downloads; honors GITHUB_TOKEN/GH_TOKEN and
+     falls back to 302 redirect tag resolution when API-rate-limited)
   3. Delegate to install.sh in the skill dir (its layout detection also handles
      global symlinks / dual copies, and syncs SKILL.md and the installer
      itself); its exit code is relayed as-is
@@ -70,18 +73,19 @@ Global-only (--global) and go install layouts have no skill dir to delegate to:
 follow the stderr hint (re-run install.sh, or go install ...@latest).
 Exit codes: 0 success or already latest; 1 skill dir not found / spawn failed;
 5 version-check network failure; install.sh's own exit code is relayed as-is.`),
-	RunE: runUpdate,
-}
-
-func init() {
-	updateCmd.Flags().BoolVar(&updateOpts.check, "check", false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runUpdate(cmd, args, opts)
+		},
+	}
+	updateCmd.Flags().BoolVar(&opts.check, "check", false,
 		i18n.T("只查询并报告版本，不下载不升级", "report current/latest versions only; no download, no upgrade"))
-	updateCmd.Flags().StringVar(&updateOpts.skillDir, "skill-dir", "",
+	updateCmd.Flags().StringVar(&opts.skillDir, "skill-dir", "",
 		i18n.T("显式指定技能目录（须含 install.sh）", "explicit skill dir (must contain install.sh)"))
+	return updateCmd
 }
 
 // runUpdate 主流程。所有 stderr 文案走 i18n；stdout 只输出结果行（管理命令同 ping）。
-func runUpdate(cmd *cobra.Command, args []string) error {
+func runUpdate(cmd *cobra.Command, args []string, updateOpts *updateOptions) error {
 	// 兜底清尸：上次 update 极端情况下残留的 .old（此刻未被运行中实例锁定即可删）
 	exeReal, _ := resolvedExePath()
 	if exeReal != "" {
@@ -272,9 +276,13 @@ func findSkillDir(flagDir string) (string, error) {
 	return "", fmt.Errorf("skill dir not found")
 }
 
-// fetchLatestTag 查询 GitHub 最新 Release tag（429/5xx/网络错误重试 ≤3，1s/2s 退避）。
+// fetchLatestTag 查询 GitHub 最新 Release tag：支持 GITHUB_TOKEN / GH_TOKEN 提额，
+// 遇 403/429（共享代理 IP 撞未认证 60 次/小时配额）优先回退 github.com 302 重定向解析 tag；
+// 5xx/网络错误退避重试 ≤3 次。
 func fetchLatestTag() (string, error) {
 	var lastErr error
+	httpClient := gateway.NewHTTPClient(15 * time.Second)
+	tok := firstNonEmpty(os.Getenv("GITHUB_TOKEN"), os.Getenv("GH_TOKEN"))
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * time.Second)
@@ -285,15 +293,27 @@ func fetchLatestTag() (string, error) {
 		}
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("User-Agent", "brain-updater")
-		client := &http.Client{Timeout: 15 * time.Second}
-		resp, err := client.Do(req)
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
-		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+		if resp.StatusCode == 403 || resp.StatusCode == 429 {
+			if tag, rerr := fetchLatestTagViaRedirect(); rerr == nil && tag != "" {
+				return tag, nil
+			}
+			if resp.StatusCode == 403 {
+				return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, gateway.OneLine(string(body), 200))
+			}
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			continue
+		}
+		if resp.StatusCode >= 500 {
 			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 			continue
 		}
@@ -308,7 +328,43 @@ func fetchLatestTag() (string, error) {
 		}
 		return payload.TagName, nil
 	}
+	if tag, rerr := fetchLatestTagViaRedirect(); rerr == nil && tag != "" {
+		return tag, nil
+	}
 	return "", lastErr
+}
+
+// fetchLatestTagViaRedirect 经 github.com/.../releases/latest 的 302 Location 头提取最新 tag
+// （不消耗 api.github.com 的 60 次/小时未认证 IP 配额）。
+func fetchLatestTagViaRedirect() (string, error) {
+	if updateRedirectURL == "" {
+		return "", fmt.Errorf("redirect fallback disabled")
+	}
+	client := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: gateway.NewHTTPClient(15 * time.Second).Transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req, err := http.NewRequest("HEAD", updateRedirectURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "brain-updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if _, tag, ok := strings.Cut(loc, "/releases/tag/"); ok {
+		tag = strings.Trim(strings.SplitN(tag, "?", 2)[0], "/")
+		if tag != "" {
+			return tag, nil
+		}
+	}
+	return "", fmt.Errorf("redirect status %d without release tag", resp.StatusCode)
 }
 
 // cmpVersion 语义化比较（剥 v 前缀、按点分数值比，缺位补 0）：-1/<0 ==0 >0。

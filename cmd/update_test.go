@@ -31,6 +31,7 @@ type fakeUpdateEnv struct {
 	oldExe   func() (string, error)
 	oldVer   func() string
 	oldBase  string
+	oldRedir string
 }
 
 func setupUpdateEnv(t *testing.T, tag string, installerScript string) *fakeUpdateEnv {
@@ -54,15 +55,16 @@ func setupUpdateEnv(t *testing.T, tag string, installerScript string) *fakeUpdat
 	t.Cleanup(api.Close)
 
 	env := &fakeUpdateEnv{skillDir: skill, binPath: binPath, api: api}
-	env.oldHome, env.oldExe, env.oldVer, env.oldBase = updateHomeDirFn, updateExePathFn, updateVersionFn, updateAPIBase
+	env.oldHome, env.oldExe, env.oldVer, env.oldBase, env.oldRedir = updateHomeDirFn, updateExePathFn, updateVersionFn, updateAPIBase, updateRedirectURL
 	homeStub := filepath.Join(dir, "home")
 	if err := os.MkdirAll(homeStub, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	updateHomeDirFn = func() (string, error) { return homeStub, nil }
 	updateAPIBase = api.URL
+	updateRedirectURL = "" // 默认禁用公网 302 兜底，保证离线测试零真实网络；专项测试自行覆写
 	t.Cleanup(func() {
-		updateHomeDirFn, updateExePathFn, updateVersionFn, updateAPIBase = env.oldHome, env.oldExe, env.oldVer, env.oldBase
+		updateHomeDirFn, updateExePathFn, updateVersionFn, updateAPIBase, updateRedirectURL = env.oldHome, env.oldExe, env.oldVer, env.oldBase, env.oldRedir
 	})
 	return env
 }
@@ -74,13 +76,10 @@ func writeFileT(t *testing.T, path, content string) {
 	}
 }
 
-func resetUpdateOpts() { updateOpts = updateOptions{} }
-
 func TestUpdateDiscoveryWalkUp(t *testing.T) {
 	env := setupUpdateEnv(t, "v9.9.9", "#!/bin/bash\nexit 0\n")
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "9.9.9" }
-	resetUpdateOpts()
 
 	// 已是最新：发现走实路径向上两级（bin → skill），不触网下载
 	code, out, errStr := runBrain("update")
@@ -101,7 +100,6 @@ func TestUpdateDiscoveryCandidates(t *testing.T) {
 	writeFileT(t, filepath.Join(codexSkill, "install.sh"), "#!/bin/bash\nexit 0\n")
 	updateExePathFn = func() (string, error) { return filepath.Join(t.TempDir(), "brain"), nil }
 	updateVersionFn = func() string { return "9.9.9" }
-	resetUpdateOpts()
 
 	code, out, _ := runBrain("update")
 	if code != 0 || !strings.Contains(out, codexSkill) {
@@ -112,7 +110,6 @@ func TestUpdateDiscoveryCandidates(t *testing.T) {
 func TestUpdateDiscoveryNotFound(t *testing.T) {
 	setupUpdateEnv(t, "v9.9.9", "#!/bin/bash\nexit 0\n")
 	updateExePathFn = func() (string, error) { return filepath.Join(t.TempDir(), "brain"), nil }
-	resetUpdateOpts()
 
 	code, _, errStr := runBrain("update")
 	if code != 1 || !strings.Contains(errStr, "install.sh") {
@@ -126,7 +123,6 @@ func TestUpdateCheckModeZeroDownload(t *testing.T) {
 	env := setupUpdateEnv(t, "v0.13.0", fmt.Sprintf("#!/bin/bash\ntouch %q\nexit 0\n", marker))
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "0.12.1" }
-	resetUpdateOpts()
 
 	code, out, errStr := runBrain("update", "--check")
 	if code != 0 || !strings.Contains(out, "0.12.1") || !strings.Contains(out, "v0.13.0") {
@@ -142,7 +138,6 @@ func TestUpdateDelegatesAndCleansOld(t *testing.T) {
 	env := setupUpdateEnv(t, "v0.13.0", fmt.Sprintf("#!/bin/bash\necho ran > %q\nexit 0\n", marker))
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "0.12.1" }
-	resetUpdateOpts()
 
 	code, out, errStr := runBrain("update")
 	if code != 0 {
@@ -163,7 +158,6 @@ func TestUpdateRelayExitCodeAndRollback(t *testing.T) {
 	env := setupUpdateEnv(t, "v0.13.0", "#!/bin/bash\nexit 3\n")
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "0.12.1" }
-	resetUpdateOpts()
 
 	code, out, errStr := runBrain("update")
 	if code != 3 {
@@ -185,7 +179,6 @@ func TestUpdateStaleOldSweep(t *testing.T) {
 	env := setupUpdateEnv(t, "v9.9.9", "#!/bin/bash\nexit 0\n")
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "9.9.9" }
-	resetUpdateOpts()
 	// 预置上次极端情况的残留
 	writeFileT(t, env.binPath+".old", "stale\n")
 
@@ -203,14 +196,12 @@ func TestUpdateSkillDirFlag(t *testing.T) {
 	// 实路径与候选表全部落空，仅 --skill-dir 显式命中
 	updateExePathFn = func() (string, error) { return filepath.Join(t.TempDir(), "brain"), nil }
 	updateVersionFn = func() string { return "9.9.9" }
-	resetUpdateOpts()
 
 	code, out, errStr := runBrain("update", "--skill-dir", env.skillDir)
 	if code != 0 || !strings.Contains(out, env.skillDir) {
 		t.Fatalf("code=%d out=%s err=%s", code, out, errStr)
 	}
 	// 显式目录缺 install.sh → exit 1
-	resetUpdateOpts()
 	empty := t.TempDir()
 	code, _, errStr = runBrain("update", "--skill-dir", empty)
 	if code != 1 {
@@ -221,7 +212,6 @@ func TestUpdateSkillDirFlag(t *testing.T) {
 func TestUpdateVersionFetchFail(t *testing.T) {
 	env := setupUpdateEnv(t, "", "#!/bin/bash\nexit 0\n")
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
-	resetUpdateOpts()
 	// 恒 500：重试 ≤3 后 exit 5
 	env.api.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
@@ -258,13 +248,11 @@ func TestUpdateNoDowngradeWhenAhead(t *testing.T) {
 	env := setupUpdateEnv(t, "v0.13.0", fmt.Sprintf("#!/bin/bash\ntouch %q\nexit 0\n", marker))
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "0.14.0" }
-	resetUpdateOpts()
 
 	code, out, _ := runBrain("update", "--check")
 	if code != 0 || !strings.Contains(out, "已是最新") {
 		t.Fatalf("高于远端版本时 --check 应报已是最新: code=%d out=%s", code, out)
 	}
-	resetUpdateOpts()
 	code, out, _ = runBrain("update")
 	if code != 0 || !strings.Contains(out, "已是最新") {
 		t.Fatalf("高于远端版本时不应降级: code=%d out=%s", code, out)
@@ -295,7 +283,6 @@ func TestUpdatePreservesUnrelatedBinary(t *testing.T) {
 
 	updateExePathFn = func() (string, error) { return goBin, nil }
 	updateVersionFn = func() string { return "0.12.0" }
-	resetUpdateOpts()
 
 	code, _, errStr := runBrain("update")
 	if code != 0 {
@@ -315,18 +302,15 @@ func TestUpdatePreservesUnrelatedBinary(t *testing.T) {
 
 // 升级途中被中断（ctx 取消 / SIGINT）时，必须把 .old 回滚为原二进制并返回 130。
 func TestUpdateInterruptRollsBackOld(t *testing.T) {
-	// 用 bash 内建 read 挂起于私有 FIFO，避免派生外部 sleep 子进程在 SIGKILL 后孤儿化拖慢测试
+	// 用纯 bash 忙等，避免非交互 bash 在等待外部子进程时按 WCE 规则忽略 SIGINT
 	env := setupUpdateEnv(t, "v0.13.0", "#!/bin/bash\nwhile :; do :; done\n")
 	updateExePathFn = func() (string, error) { return env.binPath, nil }
 	updateVersionFn = func() string { return "0.12.0" }
-	resetUpdateOpts()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
-	rootCmd.SetContext(ctx)
-	t.Cleanup(func() { rootCmd.SetContext(context.Background()) })
 
-	code, _, errStr := runBrain("update")
+	code, _, errStr := runBrainCtx(ctx, "update")
 	if code != 130 {
 		t.Fatalf("中断应返回 130，实际 %d (stderr=%s)", code, errStr)
 	}
@@ -390,22 +374,38 @@ func TestInstallShSHA256FailClosedAndOldLayout(t *testing.T) {
 	sum := sha256.Sum256(rawTar)
 	goodHash := hex.EncodeToString(sum[:])
 
-	// fake curl：按 URL 末尾提供 latest JSON / tar.gz / SHA256SUMS
+	// fake curl：支持 -o / -H / -w 参数，模拟 API JSON、403 限流后的 302 Location 重定向及归档下载
 	sumsFile := filepath.Join(srvDir, "SHA256SUMS")
+	authLog := filepath.Join(srvDir, "auth.log")
 	fakeCurl := fmt.Sprintf(`#!/bin/bash
 set -e
 out=""
 url=""
+fmt=""
+auth=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) out="$2"; shift 2 ;;
+    -H) auth="$2"; shift 2 ;;
+    -w) fmt="$2"; shift 2 ;;
     -*) shift ;;
     *) url="$1"; shift ;;
   esac
 done
+if [ -n "$auth" ]; then
+  printf '%%s\n' "$auth" >> %q
+fi
 case "$url" in
-  */releases/latest)
+  https://api.github.com/*/releases/latest)
+    if [ "${FAKE_API_FAIL:-0}" = "1" ]; then
+      exit 22
+    fi
     printf '{"tag_name":"v0.99.0"}'
+    ;;
+  https://github.com/*/releases/latest)
+    if [ -n "$fmt" ]; then
+      printf 'https://github.com/icheer/brain-cli/releases/tag/v0.99.0'
+    fi
     ;;
   */SHA256SUMS)
     cp %q "$out"
@@ -414,15 +414,17 @@ case "$url" in
     cp %q "$out"
     ;;
 esac
-`, sumsFile, tarPath)
+`, authLog, sumsFile, tarPath)
 	writeFileT(t, filepath.Join(fakeBin, "curl"), fakeCurl)
 
-	runInstaller := func() (int, string) {
-		cmd := exec.Command("bash", filepath.Join(skillDir, "install.sh"))
+	runInstallerArgs := func(args []string, extraEnv ...string) (int, string) {
+		cmdArgs := append([]string{filepath.Join(skillDir, "install.sh")}, args...)
+		cmd := exec.Command("bash", cmdArgs...)
 		cmd.Env = append(os.Environ(),
 			"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 			"BRAIN_GLOBAL_BIN="+globalDir,
 		)
+		cmd.Env = append(cmd.Env, extraEnv...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			if ee, ok := err.(*exec.ExitError); ok {
@@ -431,6 +433,9 @@ esac
 			return 1, err.Error()
 		}
 		return 0, string(out)
+	}
+	runInstaller := func(extraEnv ...string) (int, string) {
+		return runInstallerArgs(nil, extraEnv...)
 	}
 
 	// 1. SHA256SUMS 不含目标文件 → 必须 Fail-Closed 退出 1（旧版会警告后跳过校验继续安装）
@@ -458,5 +463,62 @@ esac
 	}
 	if _, err := os.Stat(filepath.Join(globalDir, "brain")); err != nil {
 		t.Fatalf(".old 存在时 install.sh 应识别并重建全局二进制: %v", err)
+	}
+	_ = os.Remove(filepath.Join(globalDir, "brain.old"))
+
+	// 4. api.github.com 403 限流失败 + GITHUB_TOKEN 透传 + 302 url_effective 重定向兜底 + BRAIN_LANG=en 英文输出
+	code, out := runInstallerArgs([]string{"--link"}, "FAKE_API_FAIL=1", "GITHUB_TOKEN=ghp_sandbox_tok", "BRAIN_LANG=en")
+	if code != 0 || !strings.Contains(out, "downloading brain v0.99.0") {
+		t.Fatalf("API 失败时应经 302 兜底成功并以英文输出: code=%d out=%s", code, out)
+	}
+	if authBytes, _ := os.ReadFile(authLog); !strings.Contains(string(authBytes), "Bearer ghp_sandbox_tok") {
+		t.Fatalf("install.sh 应透传 GITHUB_TOKEN Authorization 头: %q", authBytes)
+	}
+	if fi, err := os.Lstat(filepath.Join(globalDir, "brain")); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("--link 应在全局目录建立软链接: err=%v mode=%v", err, fi)
+	}
+
+	// 5. BRAIN_LANG=en 下 --help 与 --uninstall 英文文案 + 反向拆除幂等（不动 SKILL.md）
+	if code, helpOut := runInstallerArgs([]string{"--help"}, "BRAIN_LANG=en"); code != 0 || !strings.Contains(helpOut, "Usage: bash install.sh") {
+		t.Fatalf("BRAIN_LANG=en --help 应输出英文用法: code=%d out=%s", code, helpOut)
+	}
+	code, uninstOut := runInstallerArgs([]string{"--uninstall"}, "BRAIN_LANG=en")
+	if code != 0 || !strings.Contains(uninstOut, "removed global symlink") || !strings.Contains(uninstOut, "config file kept") {
+		t.Fatalf("--uninstall 英文拆除输出不符: code=%d out=%s", code, uninstOut)
+	}
+	if _, err := os.Lstat(filepath.Join(globalDir, "brain")); !os.IsNotExist(err) {
+		t.Fatal("--uninstall 后全局软链应已移除")
+	}
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+		t.Fatal("--uninstall 不得误删 SKILL.md")
+	}
+}
+
+// update 版本查询支持 GITHUB_TOKEN 鉴权头，并在 api.github.com 返回 403/429 时回退 302 Location 解析 tag。
+func TestUpdateGitHubTokenAnd403RedirectFallback(t *testing.T) {
+	var seenAuth string
+	env := setupUpdateEnv(t, "", "#!/bin/bash\nexit 0\n")
+	updateExePathFn = func() (string, error) { return env.binPath, nil }
+	updateVersionFn = func() string { return "0.12.0" }
+
+	env.api.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"API rate limit exceeded"}`))
+	})
+	redirSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "https://github.com/icheer/brain-cli/releases/tag/v0.99.0")
+		w.WriteHeader(http.StatusFound)
+	}))
+	t.Cleanup(redirSrv.Close)
+	updateRedirectURL = redirSrv.URL
+	t.Setenv("GITHUB_TOKEN", "ghp_unit_token")
+
+	code, out, errStr := runBrain("update", "--check")
+	if code != 0 || !strings.Contains(out, "latest v0.99.0") {
+		t.Fatalf("403 时应经 302 兜底拿到 v0.99.0: code=%d out=%s err=%s", code, out, errStr)
+	}
+	if seenAuth != "Bearer ghp_unit_token" {
+		t.Fatalf("应携带 GITHUB_TOKEN Bearer 头，实际 %q", seenAuth)
 	}
 }

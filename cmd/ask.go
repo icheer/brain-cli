@@ -41,13 +41,13 @@ type askOptions struct {
 	dryRun          bool
 }
 
-var askOpts askOptions
-
-var askCmd = &cobra.Command{
-	Use: "ask [-m model] [-e effort] [-f file]... [-i image]... [-s system]... [--json] [prompt...]",
-	Short: i18n.T("发起一次咨询，stdout 只输出模型正文（--json 时为单行 JSON）",
-		"Ask once; stdout carries only the model reply (single-line JSON with --json)"),
-	Long: i18n.T(`发起一次咨询。输入按「位置参数 → -f（按出现顺序）→ stdin 管道」拼接，
+func newAskCmd() *cobra.Command {
+	opts := &askOptions{}
+	askCmd := &cobra.Command{
+		Use: "ask [-m model] [-e effort] [-f file]... [-i image]... [-s system]... [--json] [prompt...]",
+		Short: i18n.T("发起一次咨询，stdout 只输出模型正文（--json 时为单行 JSON）",
+			"Ask once; stdout carries only the model reply (single-line JSON with --json)"),
+		Long: i18n.T(`发起一次咨询。输入按「位置参数 → -f（按出现顺序）→ stdin 管道」拼接，
 图片以 -i 追加在文本之后。别名自带故障转移链，失败自动换下一模型（stderr 提示）。示例：
 
   brain ask -m coding "审查这段代码的并发安全性"
@@ -61,48 +61,49 @@ switches to the next model automatically (noted on stderr). Examples:
   cat slow.log | brain ask -m reason "find the three slowest spots and explain why"
   brain ask -m vision -i chart.png "what does this chart tell"
   brain ask -m reason -e high --json "reason it out" | jq -r .content`),
-	Args: cobra.ArbitraryArgs,
-	RunE: runAsk,
-}
-
-func init() {
-	askCmd.Flags().StringVarP(&askOpts.model, "model", "m", "",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAsk(cmd, args, opts)
+		},
+	}
+	askCmd.Flags().StringVarP(&opts.model, "model", "m", "",
 		i18n.T("模型别名或字面模型 ID（缺省用 config 的 default_model）",
 			"model alias or literal model ID (defaults to default_model from config)"))
-	askCmd.Flags().StringArrayVarP(&askOpts.files, "file", "f", nil,
+	askCmd.Flags().StringArrayVarP(&opts.files, "file", "f", nil,
 		i18n.T("文本文件，可多次", "text file, repeatable"))
-	askCmd.Flags().StringArrayVarP(&askOpts.images, "image", "i", nil,
+	askCmd.Flags().StringArrayVarP(&opts.images, "image", "i", nil,
 		i18n.T("图片（本地路径或 URL），可多次", "image (local path or URL), repeatable"))
-	askCmd.Flags().StringArrayVarP(&askOpts.system, "system", "s", nil,
+	askCmd.Flags().StringArrayVarP(&opts.system, "system", "s", nil,
 		i18n.T("系统提示词，可重复（以空行连接）", "system prompt, repeatable (joined by a blank line)"))
-	askCmd.Flags().IntVar(&askOpts.timeout, "timeout", 0,
+	askCmd.Flags().IntVar(&opts.timeout, "timeout", 0,
 		i18n.T("整体超时秒数（含重试与故障转移，覆盖 config）",
 			"overall timeout in seconds, incl. retries and fallback (overrides config)"))
-	askCmd.Flags().Int64Var(&askOpts.maxInputBytes, "max-input-bytes", 0,
+	askCmd.Flags().Int64Var(&opts.maxInputBytes, "max-input-bytes", 0,
 		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
-	askCmd.Flags().StringVarP(&askOpts.reasoningEffort, "reasoning-effort", "e", "",
+	askCmd.Flags().StringVarP(&opts.reasoningEffort, "reasoning-effort", "e", "",
 		i18n.T("推理深度纯透传（档位因模型而异，如 low/medium/high/xhigh/max；不设则用各模型默认）",
 			"reasoning effort, passed through as-is (model-specific tiers like low/medium/high/xhigh/max; unset = model default)"))
-	askCmd.Flags().IntVar(&askOpts.maxOutputTokens, "max-output-tokens", 0,
+	askCmd.Flags().IntVar(&opts.maxOutputTokens, "max-output-tokens", 0,
 		i18n.T("输出预算（max_tokens）纯透传：防思维链吃满输出预算、限制长输出；0=不传用网关默认",
 			"output budget (max_tokens), passed through as-is: guards against thinking eating the whole budget, caps long output; 0 = omit, gateway default"))
-	askCmd.Flags().StringArrayVar(&askOpts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
-	askCmd.Flags().StringArrayVar(&askOpts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
-	askCmd.Flags().BoolVarP(&askOpts.quiet, "quiet", "q", false,
+	askCmd.Flags().StringArrayVar(&opts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
+	askCmd.Flags().StringArrayVar(&opts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
+	askCmd.Flags().BoolVarP(&opts.quiet, "quiet", "q", false,
 		i18n.T("静默 stderr：关闭心跳/耗时/转移提示（警告与错误保留）",
 			"quiet stderr: no heartbeat/elapsed/fallback chatter (warnings and errors kept)"))
-	askCmd.Flags().BoolVar(&askOpts.dryRun, "dry-run", false,
+	askCmd.Flags().BoolVar(&opts.dryRun, "dry-run", false,
 		i18n.T("只组装并输出最终将发送的 messages（单行 JSON），不发起网络请求",
 			"assemble and print the final messages (single-line JSON) without any network call"))
-	askCmd.Flags().BoolVar(&askOpts.jsonOut, "json", false,
+	askCmd.Flags().BoolVar(&opts.jsonOut, "json", false,
 		i18n.T("单行 JSON 输出（成败恒定一个对象，含 usage/latency/error）",
 			"single-line JSON output (always exactly one object, success or failure, with usage/latency/error)"))
-	askCmd.Flags().BoolVar(&askOpts.stream, "stream", false,
+	askCmd.Flags().BoolVar(&opts.stream, "stream", false,
 		i18n.T("正文增量打印到 stdout（人类交互用；开始输出后禁用重试与故障转移）",
 			"stream content to stdout incrementally (for humans; disables retry/fallback once output starts)"))
-	askCmd.Flags().BoolVar(&askOpts.showThinking, "show-thinking", false,
+	askCmd.Flags().BoolVar(&opts.showThinking, "show-thinking", false,
 		i18n.T("思维链走 stderr，stdout 仍只有正文（--stream 时思维链同步增量）",
 			"print reasoning to stderr, stdout stays content-only (streams alongside --stream)"))
+	return askCmd
 }
 
 // heartbeatInterval 心跳间隔（DESIGN.md 3.2：长推理时的 stderr 进度提示）。
@@ -134,7 +135,7 @@ type askJSONError struct {
 	AttemptedModels []string `json:"attempted_models,omitempty"`
 }
 
-func runAsk(cmd *cobra.Command, args []string) (retErr error) {
+func runAsk(cmd *cobra.Command, args []string, askOpts *askOptions) (retErr error) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	// --stream 是人类交互模式，--json 是机器解析模式，二者互斥

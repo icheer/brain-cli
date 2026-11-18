@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -85,26 +86,16 @@ func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	} {
 		t.Setenv(k, "")
 	}
-	// cobra 复用同一命令对象，重置上次测试残留的 flag 值
-	askOpts = askOptions{}
-	compareOpts = compareOptions{}
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
-	drawOpts = drawOptions{aspect: "auto", res: "auto"}     // aspect/res 同理有非零默认值
-	decideOpts = decideOptions{}                            // 同理重置（cobra flag 跨 runBrain 残留）
-	modelsOpts = modelsOptions{}
-	pingOpts = pingOptions{timeout: 20}
-	updateOpts = updateOptions{}
-	initOpts = struct {
-		baseURL      string
-		defaultModel string
-		force        bool
-	}{}
 	return dir
 }
 
 func runBrain(args ...string) (code int, stdout, stderr string) {
+	return runBrainCtx(context.Background(), args...)
+}
+
+func runBrainCtx(ctx context.Context, args ...string) (code int, stdout, stderr string) {
 	var out, errB strings.Builder
-	code = run(args, &out, &errB)
+	code = runContext(ctx, args, &out, &errB)
 	return code, out.String(), errB.String()
 }
 
@@ -394,7 +385,6 @@ func TestAskDataTagDeclaration(t *testing.T) {
 		t.Fatalf("多来源应有声明 system: %v", m0)
 	}
 
-	askOpts = askOptions{} // cobra flag 状态会跨 runBrain 泄漏（首个 runBrain 带过 -f）
 	code, _, _ = runBrain("ask", "-m", "fast", "就一个问题")
 	if code != 0 {
 		t.Fatal("code != 0")
@@ -406,7 +396,6 @@ func TestAskDataTagDeclaration(t *testing.T) {
 
 	// 2026-11-11：问题正文里出现标签字面量（咨询 brain 自身格式等场景）不误触发
 	// 声明——判定依据 Assemble 的结构标志而非扫描正文（旧实现此处会误注入）
-	askOpts = askOptions{}
 	code, _, _ = runBrain("ask", "-m", "fast", "什么是 <attachment> 与 <stdin> 标签")
 	if code != 0 {
 		t.Fatal("code != 0")
@@ -417,7 +406,6 @@ func TestAskDataTagDeclaration(t *testing.T) {
 	}
 
 	// 单管道裸发（无位置参数、无 -f）：正文不包裹 <stdin>，故不应注入标签声明 system
-	askOpts = askOptions{}
 	stdin = strings.NewReader("单管道裸发内容")
 	stdinPiped = true
 	t.Cleanup(func() { stdin = os.Stdin; stdinPiped = false })

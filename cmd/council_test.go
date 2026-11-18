@@ -168,11 +168,9 @@ func TestCouncilValidation(t *testing.T) {
 	if code, _, errStr := runBrain("council", "-m", "fast", "--dry-run", "--json", "问"); code != 1 || !strings.Contains(errStr, "互斥") {
 		t.Fatalf("--dry-run 与 --json 应互斥: code=%d stderr=%q", code, errStr)
 	}
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	if code, _, errStr := runBrain("council", "-m", "fast", "-r", "0", "问"); code != 1 || !strings.Contains(errStr, "≥1") {
 		t.Fatalf("-r 0 应 exit 1: code=%d stderr=%q", code, errStr)
 	}
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	if code, _, errStr := runBrain("council", "-m", "m-a", "问"); code != 1 || !strings.Contains(errStr, "≥2") {
 		t.Fatalf("单席位应 exit 1: code=%d stderr=%q", code, errStr)
 	}
@@ -205,7 +203,6 @@ func TestCouncilDropoutEarlyTerm(t *testing.T) {
 		}
 	}
 
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // rounds/order 有非零默认值，重置须保留
 	code, out, _ = runBrain("council", "-m", "fast", "--json", "问")
 	if code != 0 {
 		t.Fatalf("code=%d", code)
@@ -352,7 +349,6 @@ func TestCouncilTemplateLanguage(t *testing.T) {
 		}
 	}
 	// 中文占比>2% 即中文（含 -s 透镜表）：英文正文 + 中文透镜表应选中文模板
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // 重置须保留非零默认值
 	code, out, _ := runBrain("council", "-m", "fast", "--dry-run",
 		"-s", "席位-透镜表：m-a 从安全视角；m-b 从性能视角", "Design review question about caching layers")
 	if code != 0 {
@@ -409,7 +405,6 @@ func TestCouncilOrderStrategies(t *testing.T) {
 	setupConfig(t, srv.URL+"/v1")
 
 	run := func(order string) (string, [][]string) {
-		councilOpts = councilOptions{rounds: 2, order: "snake"} // 重置须保留非零默认值
 		args := []string{"council", "-m", "m-a", "-m", "m-b", "-m", "m-c", "-r", "3", "--dry-run", "问"}
 		if order != "" {
 			args = append(args, "--order", order)
@@ -455,7 +450,6 @@ func TestCouncilOrderStrategies(t *testing.T) {
 	}
 
 	// 非法值 exit 1（snake/rotate/fixed 枚举）
-	councilOpts = councilOptions{rounds: 2, order: "snake"} // 重置须保留非零默认值
 	if code, _, errStr := runBrain("council", "-m", "m-a", "-m", "m-b", "--order", "random", "问"); code != 1 || !strings.Contains(errStr, "snake/rotate/fixed") {
 		t.Fatalf("非法 --order 应 exit 1: code=%d stderr=%q", code, errStr)
 	}
@@ -498,5 +492,193 @@ func TestCouncilSpeechEscapedInTranscript(t *testing.T) {
 	}
 	if !strings.Contains(txt, `<speech seat="m-b" round="1" status="absent" />`) {
 		t.Fatalf("缺席自闭合标记应保留: %q", txt)
+	}
+}
+
+// --blind 匿名议会全链路：
+// 1) 请求网关顶层 model 仍为真实 m-a / m-b，但 messages 内议事规则、席位指令与第 2 轮 <speech seat="...">
+//    完全匿名为 Model_A / Model_B，零真实模型名泄漏（消除辩手间厂牌顺从/偏见）；
+// 2) stdout 分隔头、--json (models + transcript[].speaker) 与 --dry-run 全程使用 Model_A / Model_B；
+// 3) 真名映射仅走 stderr。
+func TestCouncilBlindEndToEnd(t *testing.T) {
+	// 注意：假网关回复内容不应自带真实模型名，否则第 2 轮 transcript 携带发言正文是预期行为；
+	// 此处构造纯匿名正文，专门检验框架自身是否在 messages 中泄漏 m-a / m-b。
+	var mu sync.Mutex
+	var reqs []councilReq
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		_ = json.Unmarshal(body, &parsed)
+		model, _ := parsed["model"].(string)
+		mu.Lock()
+		reqs = append(reqs, councilReq{Model: model, Body: string(body)})
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl, _ := w.(http.Flusher)
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":\"观点来自席位\"}}]}\n\n")
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+	}))
+	t.Cleanup(srv.Close)
+	setupConfig(t, srv.URL+"/v1")
+
+	// 1. --dry-run + --blind
+	code, dryOut, _ := runBrain("council", "-m", "fast", "--blind", "--dry-run", "评审方案")
+	if code != 0 {
+		t.Fatalf("blind dry-run code=%d", code)
+	}
+	if strings.Contains(dryOut, "m-a") || strings.Contains(dryOut, "m-b") {
+		t.Fatalf("blind dry-run 不应暴露真实模型名: %s", dryOut)
+	}
+	if !strings.Contains(dryOut, `"models":["Model_A","Model_B"]`) || !strings.Contains(dryOut, "Model_A、Model_B") {
+		t.Fatalf("blind dry-run 应使用 Model_A/Model_B: %s", dryOut)
+	}
+
+	// 2. 实弹标准输出 + 请求体审查
+	code, out, errStr := runBrain("council", "-m", "fast", "--blind", "评审方案")
+	if code != 0 {
+		t.Fatalf("blind council code=%d stderr=%s", code, errStr)
+	}
+	wantOut := "===== model: Model_A | round 1 =====\n观点来自席位\n\n\n" +
+		"===== model: Model_B | round 1 =====\n观点来自席位\n\n\n" +
+		"===== model: Model_B | round 2 =====\n观点来自席位\n\n\n" +
+		"===== model: Model_A | round 2 =====\n观点来自席位\n"
+	if out != wantOut {
+		t.Fatalf("blind stdout 不符:\n got %q\nwant %q", out, wantOut)
+	}
+	if !strings.Contains(errStr, "Model_A=m-a") || !strings.Contains(errStr, "Model_B=m-b") {
+		t.Fatalf("stderr 应输出盲测映射: %q", errStr)
+	}
+	if len(reqs) != 4 {
+		t.Fatalf("应发起 4 次请求: %d", len(reqs))
+	}
+	r2Count := 0
+	for _, rq := range reqs {
+		if rq.Model != "m-a" && rq.Model != "m-b" {
+			t.Fatalf("网关请求顶层 model 应为真实 ID: %q", rq.Model)
+		}
+		var parsed map[string]any
+		_ = json.Unmarshal([]byte(rq.Body), &parsed)
+		msgsBytes, _ := json.Marshal(parsed["messages"])
+		msgsStr := string(msgsBytes)
+		if strings.Contains(msgsStr, "m-a") || strings.Contains(msgsStr, "m-b") {
+			t.Fatalf("--blind 下发给模型的 messages 泄漏了真实模型 ID: %s", msgsStr)
+		}
+		if strings.Contains(msgsStr, "这是第 2/2 轮") {
+			r2Count++
+			if !strings.Contains(msgsStr, `speech seat=\"Model_A\" round=\"1\"`) ||
+				!strings.Contains(msgsStr, `speech seat=\"Model_B\" round=\"1\"`) {
+				t.Fatalf("第 2 轮发言记录标签应使用匿名席位 Model_A/Model_B: %s", msgsStr)
+			}
+		}
+	}
+	if r2Count != 2 {
+		t.Fatalf("第 2 轮应有 2 次调用: %d", r2Count)
+	}
+
+	// 3. --json + --blind
+	code, jsonOut, _ := runBrain("council", "-m", "fast", "-r", "1", "--blind", "--json", "评审方案")
+	if code != 0 {
+		t.Fatalf("blind --json code=%d", code)
+	}
+	if strings.Contains(jsonOut, "m-a") || strings.Contains(jsonOut, "m-b") {
+		t.Fatalf("blind --json stdout 不应含真实模型名: %s", jsonOut)
+	}
+	var jr struct {
+		Models     []string `json:"models"`
+		Transcript []struct {
+			Speaker string `json:"speaker"`
+		} `json:"transcript"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &jr); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(jr.Models, []string{"Model_A", "Model_B"}) ||
+		len(jr.Transcript) != 2 || jr.Transcript[0].Speaker != "Model_A" || jr.Transcript[1].Speaker != "Model_B" {
+		t.Fatalf("blind --json 字段不符: %+v", jr)
+	}
+}
+
+// council --json 对齐 ask/compare：每条发言携带 thinking 与 finish_reason。
+func TestCouncilJSONThinkingAndFinishReason(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var parsed map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&parsed)
+		model, _ := parsed["model"].(string)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl, _ := w.(http.Flusher)
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think:%s\"}}]}\n\n", model)
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ans:%s\"}}]}\n\n", model)
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+	}))
+	t.Cleanup(srv.Close)
+	setupConfig(t, srv.URL+"/v1")
+
+	code, out, errStr := runBrain("council", "-m", "fast", "-r", "1", "--json", "问")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errStr)
+	}
+	var jr struct {
+		Transcript []struct {
+			Speaker      string `json:"speaker"`
+			Content      string `json:"content"`
+			Thinking     string `json:"thinking"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"transcript"`
+	}
+	if err := json.Unmarshal([]byte(out), &jr); err != nil {
+		t.Fatalf("解析 JSON 失败: %v\n%s", err, out)
+	}
+	if len(jr.Transcript) != 2 {
+		t.Fatalf("transcript 长度应为 2: %+v", jr.Transcript)
+	}
+	if jr.Transcript[0].Thinking != "think:m-a" || jr.Transcript[0].FinishReason != "stop" ||
+		jr.Transcript[1].Thinking != "think:m-b" || jr.Transcript[1].FinishReason != "stop" {
+		t.Fatalf("thinking / finish_reason 未对齐输出: %+v", jr.Transcript)
+	}
+}
+
+// -s 透镜表误写别名检测：引用别名但未出现任何实际席位名时 stderr 告警；
+// 写对模型 ID、--blind 写 Model_A、或普通英文形容词 "be fast" 均不误报。
+func TestCouncilLensAliasWarning(t *testing.T) {
+	srv, _ := fakeCouncilGateway(t, nil)
+	setupConfig(t, srv.URL+"/v1")
+
+	// 1. 键值赋值写法 fast=... → 告警并提示展开后的席位名
+	code, _, errStr := runBrain("council", "-m", "fast", "--dry-run", "-s", "fast=安全视角", "评审")
+	if code != 0 || !strings.Contains(errStr, `"fast"`) || !strings.Contains(errStr, "m-a, m-b") {
+		t.Fatalf("键值误写别名应告警: code=%d stderr=%q", code, errStr)
+	}
+
+	// 2. 透镜语境词 + 独立别名词元 → 告警
+	code, _, errStr = runBrain("council", "-m", "fast", "--dry-run", "-s", "席位透镜分配：请 fast 关注并发风险", "评审")
+	if code != 0 || !strings.Contains(errStr, `"fast"`) {
+		t.Fatalf("透镜语境误写别名应告警: code=%d stderr=%q", code, errStr)
+	}
+
+	// 3. 写对实际模型 ID → 不告警
+	code, _, errStr = runBrain("council", "-m", "fast", "--dry-run", "-s", "m-a=安全视角；m-b=性能视角", "评审")
+	if code != 0 || strings.Contains(errStr, "警告") {
+		t.Fatalf("写对模型 ID 不应告警: code=%d stderr=%q", code, errStr)
+	}
+
+	// 4. --blind 模式写 Model_A / Model_B → 不告警
+	code, _, errStr = runBrain("council", "-m", "fast", "--blind", "--dry-run", "-s", "Model_A=安全视角；Model_B=性能视角", "评审")
+	if code != 0 || strings.Contains(errStr, "警告") {
+		t.Fatalf("--blind 写 Model_A/B 不应告警: code=%d stderr=%q", code, errStr)
+	}
+
+	// 5. 普通英文自然语言 "Be fast and concise" → 不误报
+	code, _, errStr = runBrain("council", "-m", "fast", "--dry-run", "-s", "Be fast and concise in your critique", "Review plan")
+	if code != 0 || strings.Contains(errStr, "警告") || strings.Contains(errStr, "warning:") {
+		t.Fatalf("普通英文形容词不应误报别名告警: code=%d stderr=%q", code, errStr)
 	}
 }

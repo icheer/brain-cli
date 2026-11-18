@@ -40,13 +40,13 @@ type drawOptions struct {
 	extraHeaders  []string
 }
 
-var drawOpts drawOptions
-
-var drawCmd = &cobra.Command{
-	Use: "draw [prompt] [-m model] [-i ref.png] [--aspect 16:9] [--res 2K]",
-	Short: i18n.T("图像生成：双协议（gemini 原生 / OpenAI Images，按模型名推断），自动落盘并打印路径",
-		"image generation: dual protocol (Gemini native / OpenAI Images, inferred from the model name); auto-saves and prints the path"),
-	Long: i18n.T(`调用生图模型画一张图（v1 固定 n=1，不做自动重试——图像按张计费，失败凭退出码人工重发）。
+func newDrawCmd() *cobra.Command {
+	opts := &drawOptions{}
+	drawCmd := &cobra.Command{
+		Use: "draw [prompt] [-m model] [-i ref.png] [--aspect 16:9] [--res 2K]",
+		Short: i18n.T("图像生成：双协议（gemini 原生 / OpenAI Images，按模型名推断），自动落盘并打印路径",
+			"image generation: dual protocol (Gemini native / OpenAI Images, inferred from the model name); auto-saves and prints the path"),
+		Long: i18n.T(`调用生图模型画一张图（v1 固定 n=1，不做自动重试——图像按张计费，失败凭退出码人工重发）。
 
 协议按模型名推断：含 gemini → Gemini 原生（:generateContent），其余 → OpenAI Images
 （/v1/images/generations）；config.yaml 的 draw.type（gemini|openai）可覆盖推断。
@@ -73,7 +73,7 @@ var drawCmd = &cobra.Command{
 输出：图片自动落盘（优先当前目录，不可写退系统临时目录），stdout 只打印保存路径
 一行；--json 时为恒定单对象（saved_path/mime/usage/latency/error 与 ask --json 同构）。
 gemini 响应中模型附带的文字走 stderr。退出码与 ask 一致（0-7/130）。`,
-		`Call an image model to draw one image (v1 is fixed to n=1 with no auto-retry —
+			`Call an image model to draw one image (v1 is fixed to n=1 with no auto-retry —
 images are billed per piece; on failure re-send manually per the exit code).
 
 Protocol is inferred from the model name: containing "gemini" -> Gemini native
@@ -108,33 +108,34 @@ Output: the image is auto-saved (cwd first, system temp dir as fallback) and
 stdout prints exactly the saved path; with --json a single constant object is
 emitted instead (saved_path/mime/usage/latency/error shaped like ask --json).
 Gemini side-text (model commentary) goes to stderr. Exit codes match ask (0-7/130).`),
-	RunE: runDraw,
-}
-
-func init() {
-	drawCmd.Flags().StringVarP(&drawOpts.model, "model", "m", "",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDraw(cmd, args, opts)
+		},
+	}
+	drawCmd.Flags().StringVarP(&opts.model, "model", "m", "",
 		i18n.T("生图模型 ID 或别名（缺省用 config.yaml 的 draw.model）",
 			"image model ID or alias (defaults to draw.model in config.yaml)"))
-	drawCmd.Flags().StringArrayVarP(&drawOpts.images, "image", "i", nil,
+	drawCmd.Flags().StringArrayVarP(&opts.images, "image", "i", nil,
 		i18n.T("参考图（可重复，仅本地文件；gemini=inlineData 参考图，openai=切 /v1/images/edits）",
 			"reference image (repeatable, local files only; gemini -> inlineData parts, openai -> /v1/images/edits)"))
-	drawCmd.Flags().StringVar(&drawOpts.aspect, "aspect", "auto",
+	drawCmd.Flags().StringVar(&opts.aspect, "aspect", "auto",
 		i18n.T("画幅：auto|1:1|16:9|9:16|4:3|3:4|3:2|2:3|5:4|4:5|21:9",
 			"aspect ratio: auto|1:1|16:9|9:16|4:3|3:4|3:2|2:3|5:4|4:5|21:9"))
-	drawCmd.Flags().StringVar(&drawOpts.res, "res", "auto",
+	drawCmd.Flags().StringVar(&opts.res, "res", "auto",
 		i18n.T("分辨率：auto|1K|2K|4K", "resolution: auto|1K|2K|4K"))
-	drawCmd.Flags().IntVar(&drawOpts.timeout, "timeout", 0,
+	drawCmd.Flags().IntVar(&opts.timeout, "timeout", 0,
 		i18n.T("秒数上限（缺省用 timeout_seconds）", "timeout in seconds (defaults to timeout_seconds)"))
-	drawCmd.Flags().Int64Var(&drawOpts.maxInputBytes, "max-input-bytes", 0,
+	drawCmd.Flags().Int64Var(&opts.maxInputBytes, "max-input-bytes", 0,
 		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
-	drawCmd.Flags().BoolVarP(&drawOpts.quiet, "quiet", "q", false,
+	drawCmd.Flags().BoolVarP(&opts.quiet, "quiet", "q", false,
 		i18n.T("关闭心跳/耗时等非必要 stderr（警告与错误保留）", "silence non-essential stderr like heartbeat/timing (warnings and errors stay)"))
-	drawCmd.Flags().BoolVar(&drawOpts.jsonOut, "json", false,
+	drawCmd.Flags().BoolVar(&opts.jsonOut, "json", false,
 		i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
-	drawCmd.Flags().BoolVar(&drawOpts.dryRun, "dry-run", false,
+	drawCmd.Flags().BoolVar(&opts.dryRun, "dry-run", false,
 		i18n.T("输出最终请求形状（单行 JSON），不发请求不花钱", "print the final request shape (single-line JSON); no request, no cost"))
-	drawCmd.Flags().StringArrayVar(&drawOpts.extraBody, "extra-body", nil, drawExtraBodyFlagsHelp())
-	drawCmd.Flags().StringArrayVar(&drawOpts.extraHeaders, "extra-headers", nil, drawExtraHeadersFlagsHelp())
+	drawCmd.Flags().StringArrayVar(&opts.extraBody, "extra-body", nil, drawExtraBodyFlagsHelp())
+	drawCmd.Flags().StringArrayVar(&opts.extraHeaders, "extra-headers", nil, drawExtraHeadersFlagsHelp())
+	return drawCmd
 }
 
 // drawExtraBodyFlagsHelp / drawExtraHeadersFlagsHelp：与 chat 同构的透传口，
@@ -164,7 +165,7 @@ type drawJSON struct {
 	Error         *askJSONError `json:"error"`
 }
 
-func runDraw(cmd *cobra.Command, args []string) (retErr error) {
+func runDraw(cmd *cobra.Command, args []string, drawOpts *drawOptions) (retErr error) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	if drawOpts.dryRun && drawOpts.jsonOut {

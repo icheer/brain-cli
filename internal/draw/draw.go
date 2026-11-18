@@ -161,7 +161,7 @@ type Client struct {
 // New 构造客户端；timeout 作为传输层兜底，总预算由调用方经 ctx 控制（同 gateway.New）。
 func New(baseURL, apiKey, typ string, timeout time.Duration) *Client {
 	return &Client{
-		HTTP:    &http.Client{Timeout: timeout},
+		HTTP:    gateway.NewHTTPClient(timeout),
 		BaseURL: baseURL,
 		APIKey:  apiKey,
 		Type:    typ,

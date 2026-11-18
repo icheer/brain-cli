@@ -24,11 +24,48 @@ var (
 	commit  = "none"
 )
 
-var rootCmd = &cobra.Command{
-	Use: "brain",
-	Short: i18n.T("大模型网关外脑：给宿主 Agent 的一次干净利落的咨询调用",
-		"LLM gateway side-brain: one clean advisory call for host agents"),
-	Long: i18n.T(`brain 通过 OpenAI Chat Completions 兼容协议调用大模型网关。
+// stdin 注入点：默认接 os.Stdin；测试可替换（golden test 需要）。
+var (
+	stdin      io.Reader = os.Stdin
+	stdinPiped bool
+)
+
+// newHelpCmd 双语替换 cobra 默认 help 命令（框架自带 Short/Long 为英文且不在 i18n 覆盖面内）。
+// Run 逻辑与 cobra 默认实现一致：定位目标命令并打印其帮助。
+func newHelpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "help [command]",
+		Short: i18n.T("查看任意命令的帮助", "Help about any command"),
+		Long: i18n.T(`查看 brain 中任意命令的帮助。
+直接输入 brain help [命令路径] 查看完整细节。`,
+			`Help provides help for any command in the application.
+Simply type brain help [path to command] for full details.`),
+		Run: func(c *cobra.Command, args []string) {
+			cmd, _, e := c.Root().Find(args)
+			if cmd == nil || e != nil {
+				c.Printf(i18n.T("未知的帮助主题 %q\n", "Unknown help topic %q\n"), args)
+				_ = c.Root().Usage()
+			} else {
+				cmd.InitDefaultHelpFlag()
+				_ = cmd.Help()
+			}
+		},
+	}
+}
+
+// newRootCmd 按需构造全新命令树：每次执行拥有独立的 flag/options 实例（根除全局可变单例跨次污染），
+// 且所有 Short/Long/flag 帮助文案按当前环境动态走 i18n（不再冻结于包 init 期）。
+func newRootCmd() *cobra.Command {
+	// 命令清单按注册序展示（默认按字母序，会把 council 挤到 config 后面）：
+	// ask/compare/council/decide 四个咨询原语相邻前置，draw（甜点小工具）第五，
+	// 其后是配置与运维命令（2026-11-12 排序调整：decide 与前三个同族，draw 垫后）
+	cobra.EnableCommandSorting = false
+
+	root := &cobra.Command{
+		Use: "brain",
+		Short: i18n.T("大模型网关外脑：给宿主 Agent 的一次干净利落的咨询调用",
+			"LLM gateway side-brain: one clean advisory call for host agents"),
+		Long: i18n.T(`brain 通过 OpenAI Chat Completions 兼容协议调用大模型网关。
 
 stdout 只输出模型正文；警告/耗时/心跳走 stderr（便于管道与 Agent 解析）。
 多轮上下文由调用方拼接，工具本身无状态。
@@ -46,49 +83,28 @@ Quick start:
   brain config set base_url <https://your-gateway/v1>
   brain config set api_key  <sk-...>
   brain ask -m fast "help me analyze this"`),
-	Version:       version,
-	SilenceUsage:  true, // 错误信息单行足够；详细用法看 --help
-	SilenceErrors: true, // 错误统一由 exitcode.Fail / run 打印，前缀一致
-}
-
-// stdin 注入点：默认接 os.Stdin；测试可替换（golden test 需要）。
-var (
-	stdin      io.Reader = os.Stdin
-	stdinPiped bool
-)
-
-// helpCmd 双语替换 cobra 默认 help 命令（框架自带 Short/Long 为英文且不在 i18n 覆盖面内）。
-// Run 逻辑与 cobra 默认实现一致：定位目标命令并打印其帮助。
-var helpCmd = &cobra.Command{
-	Use:   "help [command]",
-	Short: i18n.T("查看任意命令的帮助", "Help about any command"),
-	Long: i18n.T(`查看 brain 中任意命令的帮助。
-直接输入 brain help [命令路径] 查看完整细节。`,
-		`Help provides help for any command in the application.
-Simply type brain help [path to command] for full details.`),
-	Run: func(c *cobra.Command, args []string) {
-		cmd, _, e := c.Root().Find(args)
-		if cmd == nil || e != nil {
-			c.Printf(i18n.T("未知的帮助主题 %q\n", "Unknown help topic %q\n"), args)
-			_ = c.Root().Usage()
-		} else {
-			cmd.InitDefaultHelpFlag()
-			_ = cmd.Help()
-		}
-	},
-}
-
-func init() {
-	rootCmd.SetVersionTemplate("brain " + version + " (commit " + commit + ")\n")
+		Version:       version,
+		SilenceUsage:  true, // 错误信息单行足够；详细用法看 --help
+		SilenceErrors: true, // 错误统一由 exitcode.Fail / run 打印，前缀一致
+	}
+	root.SetVersionTemplate("brain " + version + " (commit " + commit + ")\n")
 	// cobra 自带的 completion 命令（shell 补全脚本生成器）对 Agent 场景无用，
 	// 且其英文文案不进双语链、嵌套子命令打错不报错，直接移除
-	rootCmd.CompletionOptions.DisableDefaultCmd = true
-	// 命令清单按注册序展示（默认按字母序，会把 council 挤到 config 后面）：
-	// ask/compare/council/decide 四个咨询原语相邻前置，draw（甜点小工具）第五，
-	// 其后是配置三件套（2026-11-12 排序调整：decide 与前三个同族，draw 垫后）
-	cobra.EnableCommandSorting = false
-	rootCmd.SetHelpCommand(helpCmd)
-	rootCmd.AddCommand(askCmd, compareCmd, councilCmd, decideCmd, drawCmd, initCmd, configCmd, modelsCmd, pingCmd, updateCmd)
+	root.CompletionOptions.DisableDefaultCmd = true
+	root.SetHelpCommand(newHelpCmd())
+	root.AddCommand(
+		newAskCmd(),
+		newCompareCmd(),
+		newCouncilCmd(),
+		newDecideCmd(),
+		newDrawCmd(),
+		newInitCmd(),
+		newConfigCmd(),
+		newModelsCmd(),
+		newPingCmd(),
+		newUpdateCmd(),
+	)
+	return root
 }
 
 func Execute() {
@@ -123,17 +139,18 @@ func isStdinPiped() bool {
 
 // run 供测试直接调用；返回退出码。
 func run(args []string, stdout, stderr io.Writer) int {
-	rootCmd.SetArgs(args)
-	rootCmd.SetOut(stdout)
-	rootCmd.SetErr(stderr)
-	ctx := rootCmd.Context()
+	return runContext(context.Background(), args, stdout, stderr)
+}
+
+func runContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	for _, sub := range rootCmd.Commands() {
-		sub.SetContext(ctx)
-	}
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
+	root := newRootCmd()
+	root.SetArgs(args)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	if err := root.ExecuteContext(ctx); err != nil {
 		var ee *exitcode.Error
 		if errors.As(err, &ee) {
 			return ee.Code

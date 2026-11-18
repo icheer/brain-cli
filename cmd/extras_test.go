@@ -134,7 +134,6 @@ func TestFastLanePrecedence(t *testing.T) {
 	}
 
 	// 冲突：--max-output-tokens 50 赢过 extra 的 999
-	askOpts = askOptions{} // cobra flag 状态会跨 runBrain 泄漏，逐子测试重置
 	code, _, errStr = runBrain("ask", "-m", "fast",
 		"--max-output-tokens", "50", "--extra-body", `{"max_tokens":999}`, "问")
 	if code != 0 {
@@ -146,7 +145,6 @@ func TestFastLanePrecedence(t *testing.T) {
 	}
 
 	// flag 未设：extras 的值原样透传
-	askOpts = askOptions{}
 	code, _, errStr = runBrain("ask", "-m", "fast",
 		"--extra-body", `{"reasoning_effort":"low","max_tokens":100}`, "问")
 	if code != 0 {

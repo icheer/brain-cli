@@ -35,13 +35,13 @@ type decideOptions struct {
 	extraHeaders  []string
 }
 
-var decideOpts decideOptions
-
-var decideCmd = &cobra.Command{
-	Use: "decide [state] [-Q questions.json] [--noul id=指令]",
-	Short: i18n.T("决策原语：System One 类型化判断（是/否、单选、评分），answers JSON 直出",
-		"decision primitive: System One typed judgments (yes/no, choice, score); answers JSON on stdout"),
-	Long: i18n.T(`对一段 state（证据）问一组类型化问题，返回结构化答案（值+概率+可选置信度），零散文。
+func newDecideCmd() *cobra.Command {
+	opts := &decideOptions{}
+	decideCmd := &cobra.Command{
+		Use: "decide [state] [-Q questions.json] [--noul id=指令]",
+		Short: i18n.T("决策原语：System One 类型化判断（是/否、单选、评分），answers JSON 直出",
+			"decision primitive: System One typed judgments (yes/no, choice, score); answers JSON on stdout"),
+		Long: i18n.T(`对一段 state（证据）问一组类型化问题，返回结构化答案（值+概率+可选置信度），零散文。
 协议仅 TypeSafe wire（POST /v1/systemone）；不兼容 OpenAI/Gemini 的 decisions 方言。
 
 输入双通道：
@@ -64,7 +64,7 @@ var decideCmd = &cobra.Command{
 重试：同模型（429/5xx/网络），不跨模型故障转移——概率校准基准不可静默漂移。
 图片不经内置语法：逃生口 --extra-body '{"assets":…}' +
 --extra-headers '{"TypeSafe-Danger-Zone-Images":"true"}'（保留字 state/questions/model）。`,
-		`Ask a set of typed questions about a state (evidence) and get structured
+			`Ask a set of typed questions about a state (evidence) and get structured
 answers (values + probabilities + optional confidence) — zero prose.
 Protocol is TypeSafe wire only (POST /v1/systemone); OpenAI/Gemini decisions
 dialects are not supported.
@@ -97,38 +97,39 @@ probability calibration baselines must not silently drift. Images have no
 built-in syntax: escape hatch --extra-body '{"assets":…}' +
 --extra-headers '{"TypeSafe-Danger-Zone-Images":"true"}'
 (reserved keys: state/questions/model).`),
-	RunE: runDecide,
-}
-
-func init() {
-	decideCmd.Flags().StringVarP(&decideOpts.model, "model", "m", "",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDecide(cmd, args, opts)
+		},
+	}
+	decideCmd.Flags().StringVarP(&opts.model, "model", "m", "",
 		i18n.T("决策模型 ID 或别名（缺省用 config.yaml 的 decide.model）",
 			"decision model ID or alias (defaults to decide.model in config.yaml)"))
-	decideCmd.Flags().StringArrayVarP(&decideOpts.questions, "questions", "Q", nil,
+	decideCmd.Flags().StringArrayVarP(&opts.questions, "questions", "Q", nil,
 		i18n.T("questions JSON 对象（systemone 原生 map：id→{type,instructions,criteria}；内联或 @file，可重复有序合并）",
 			"questions JSON object (native systemone map: id→{type,instructions,criteria}; inline or @file, repeatable, merged in order)"))
-	decideCmd.Flags().StringArrayVar(&decideOpts.nouls, "noul", nil,
+	decideCmd.Flags().StringArrayVar(&opts.nouls, "noul", nil,
 		i18n.T("是/否问题速记 <id>=<指令>（可重复；按首个 = 切分）",
 			"yes/no question shorthand <id>=<instruction> (repeatable; split on the first =)"))
-	decideCmd.Flags().StringArrayVarP(&decideOpts.files, "file", "f", nil,
+	decideCmd.Flags().StringArrayVarP(&opts.files, "file", "f", nil,
 		i18n.T("state 附件（可重复；与 ask 同款 <attachment> XML 组装）",
 			"state attachments (repeatable; assembled into <attachment> XML like ask)"))
-	decideCmd.Flags().IntVar(&decideOpts.timeout, "timeout", 0,
+	decideCmd.Flags().IntVar(&opts.timeout, "timeout", 0,
 		i18n.T("秒数上限（缺省用 timeout_seconds）", "timeout in seconds (defaults to timeout_seconds)"))
-	decideCmd.Flags().Int64Var(&decideOpts.maxInputBytes, "max-input-bytes", 0,
+	decideCmd.Flags().Int64Var(&opts.maxInputBytes, "max-input-bytes", 0,
 		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
-	decideCmd.Flags().BoolVarP(&decideOpts.quiet, "quiet", "q", false,
+	decideCmd.Flags().BoolVarP(&opts.quiet, "quiet", "q", false,
 		i18n.T("关闭计时行等非必要 stderr（警告与错误保留）", "silence non-essential stderr like the timing line (warnings and errors stay)"))
-	decideCmd.Flags().BoolVar(&decideOpts.jsonOut, "json", false,
+	decideCmd.Flags().BoolVar(&opts.jsonOut, "json", false,
 		i18n.T("恒定单对象外壳输出（机器可读）", "constant single-object envelope output (machine-readable)"))
-	decideCmd.Flags().BoolVar(&decideOpts.dryRun, "dry-run", false,
+	decideCmd.Flags().BoolVar(&opts.dryRun, "dry-run", false,
 		i18n.T("输出最终请求形状（单行 JSON），不发请求不花钱", "print the final request shape (single-line JSON); no request, no cost"))
-	decideCmd.Flags().StringArrayVar(&decideOpts.extraBody, "extra-body", nil,
+	decideCmd.Flags().StringArrayVar(&opts.extraBody, "extra-body", nil,
 		i18n.T("附加请求体参数（JSON 对象或 @file）；图片经 assets 走此通道；保留字 state/questions/model 拒绝",
 			"extra request-body fields (JSON object or @file); images ride the assets key here; reserved keys state/questions/model are rejected"))
-	decideCmd.Flags().StringArrayVar(&decideOpts.extraHeaders, "extra-headers", nil,
+	decideCmd.Flags().StringArrayVar(&opts.extraHeaders, "extra-headers", nil,
 		i18n.T("附加 HTTP 头（JSON 对象或 @file）；图片解锁需 TypeSafe-Danger-Zone-Images",
 			"extra HTTP headers (JSON object or @file); images need TypeSafe-Danger-Zone-Images"))
+	return decideCmd
 }
 
 // decideJSON 是 decide --json 的输出结构（成败恒定一个对象，与 ask --json 同构）。
@@ -141,7 +142,7 @@ type decideJSON struct {
 	Error     *askJSONError   `json:"error"`
 }
 
-func runDecide(cmd *cobra.Command, args []string) (retErr error) {
+func runDecide(cmd *cobra.Command, args []string, decideOpts *decideOptions) (retErr error) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	if decideOpts.dryRun && decideOpts.jsonOut {

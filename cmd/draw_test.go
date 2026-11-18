@@ -355,11 +355,6 @@ func setupInitTest(t *testing.T) (dir, cfgPath string) {
 	for _, k := range []string{"BRAIN_DRAW_MODEL", "BRAIN_DRAW_BASE_URL", "BRAIN_DRAW_API_KEY", "BRAIN_DRAW_TYPE"} {
 		t.Setenv(k, "")
 	}
-	initOpts = struct {
-		baseURL      string
-		defaultModel string
-		force        bool
-	}{}
 	return dir, cfgPath
 }
 
@@ -492,7 +487,6 @@ func TestDrawExtraBodyReserved(t *testing.T) {
 		t.Fatalf("gemini 保留字应 exit 1: code=%d stderr=%s", code, errStr)
 	}
 	// gemini 的 aspect_ratio 风格键不是保留字（openai 才有）——放行到装配层
-	drawOpts = drawOptions{aspect: "auto", res: "auto"} // cobra flag 跨 runBrain 残留（extra-body 数组会累加）
 	code, _, errStr = runBrain("draw", "--dry-run", "--extra-body", `{"aspect_ratio":"16:9"}`, "x")
 	if code != 0 {
 		t.Fatalf("gemini aspect_ratio 应放行: code=%d stderr=%s", code, errStr)
@@ -544,14 +538,12 @@ func TestDrawMaxInputBytesAndStdinUTF8(t *testing.T) {
 		t.Fatalf("draw 超限应 exit 6: code=%d stderr=%s", code, errStr)
 	}
 
-	drawOpts = drawOptions{aspect: "auto", res: "auto"}
 	code, _, errStr = runBrain("draw", "--max-input-bytes", "64", "a very long prompt")
 	if code != 0 {
 		t.Fatalf("draw 调大 --max-input-bytes 应成功: code=%d stderr=%s", code, errStr)
 	}
 
 	// 管道传入非 UTF-8 二进制应 exit 1 拒绝
-	drawOpts = drawOptions{aspect: "auto", res: "auto"}
 	stdin = strings.NewReader(string([]byte{0xff, 0xfe, 0x00}))
 	stdinPiped = true
 	t.Cleanup(func() { stdin = os.Stdin; stdinPiped = false })

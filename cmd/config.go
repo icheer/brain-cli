@@ -16,11 +16,20 @@ import (
 	"github.com/icheer/brain-cli/internal/i18n"
 )
 
-var configCmd = &cobra.Command{
-	Use: "config",
-	Short: i18n.T("查看/修改个人配置（config.yaml，含密钥，0600）",
-		"view/edit personal config (config.yaml; contains the key, 0600)"),
-	Long: i18n.T(`管理 config.yaml（个人配置，含密钥，永不进仓库）：
+// configKeys 允许 get/set/list 的键，与 config.Config 字段一一对应（draw 段为嵌套键）。
+var configKeys = []string{
+	"base_url", "api_key", "default_model",
+	"timeout_seconds", "max_input_bytes", "retry_max", "models_cache_ttl_seconds", "user_agent",
+	"draw.model", "draw.base_url", "draw.api_key", "draw.type",
+	"decide.model", "decide.base_url", "decide.api_key",
+}
+
+func newConfigCmd() *cobra.Command {
+	configCmd := &cobra.Command{
+		Use: "config",
+		Short: i18n.T("查看/修改个人配置（config.yaml，含密钥，0600）",
+			"view/edit personal config (config.yaml; contains the key, 0600)"),
+		Long: i18n.T(`管理 config.yaml（个人配置，含密钥，永不进仓库）：
 
   brain config path            打印配置文件路径
   brain config get <key>       查看某项（api_key 原样输出）
@@ -33,120 +42,167 @@ var configCmd = &cobra.Command{
   brain config set <key> <v>   set one key (stays 0600 after write)
   brain config list            list all (api_key masked)
   brain config edit            open in $VISUAL / $EDITOR`),
-}
-
-// configKeys 允许 get/set/list 的键，与 config.Config 字段一一对应（draw 段为嵌套键）。
-var configKeys = []string{
-	"base_url", "api_key", "default_model",
-	"timeout_seconds", "max_input_bytes", "retry_max", "models_cache_ttl_seconds", "user_agent",
-	"draw.model", "draw.base_url", "draw.api_key", "draw.type",
-	"decide.model", "decide.base_url", "decide.api_key",
-}
-
-func init() {
+	}
+	configPathCmd := &cobra.Command{
+		Use:   "path",
+		Short: i18n.T("打印配置文件路径", "print the config file path"),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cp, err := config.Path()
+			if err != nil {
+				return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%s", i18n.Tf("定位配置路径失败: %v", "failed to locate config path: %v", err))
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), cp)
+			return nil
+		},
+	}
+	configGetCmd := &cobra.Command{
+		Use:   "get <key>",
+		Short: i18n.T("查看某项配置", "show one config value"),
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, _, err := config.Load()
+			if err != nil {
+				return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%v", err)
+			}
+			v, ok := cfgValue(cfg, args[0])
+			if !ok {
+				return unknownKey(cmd, args[0])
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), v)
+			return nil
+		},
+	}
+	configSetCmd := &cobra.Command{
+		Use:   "set <key> <value>",
+		Short: i18n.T("修改某项配置", "set one config value"),
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stderr := cmd.ErrOrStderr()
+			cfg, _, err := config.Load()
+			if err != nil {
+				var fe *config.FileError
+				if !errors.As(err, &fe) {
+					return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+				}
+				// 文件损坏时从默认值重建，避免用户被锁死
+				cfg = config.Default()
+			}
+			if err := cfgSetValue(&cfg, args[0], args[1]); err != nil {
+				return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+			}
+			if err := config.Save(cfg); err != nil {
+				return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+			}
+			p, _ := config.Path()
+			fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("已写入", "written"), p)
+			return nil
+		},
+	}
+	configListCmd := &cobra.Command{
+		Use:   "list",
+		Short: i18n.T("列出全部配置（api_key 打码）", "list all config values (api_key masked)"),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, _, err := config.Load()
+			if err != nil {
+				return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%v", err)
+			}
+			out := cmd.OutOrStdout()
+			for _, k := range configKeys {
+				v, _ := cfgValue(cfg, k)
+				if k == "api_key" || k == "draw.api_key" || k == "decide.api_key" {
+					v = mask(v)
+				}
+				fmt.Fprintf(out, "%s = %s\n", k, v)
+			}
+			return nil
+		},
+	}
+	configEditCmd := &cobra.Command{
+		Use:   "edit",
+		Short: i18n.T("用编辑器打开 config.yaml", "open config.yaml in an editor"),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stderr := cmd.ErrOrStderr()
+			p, err := config.Path()
+			if err != nil {
+				return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+			}
+			if _, err := os.Stat(p); os.IsNotExist(err) {
+				if err := config.Save(config.Default()); err != nil {
+					return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+				}
+			}
+			editor := firstNonEmpty(os.Getenv("VISUAL"), os.Getenv("EDITOR"), defaultEditor())
+			c, err := buildEditorCmd(editor, p)
+			if err != nil {
+				return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+			}
+			c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := c.Run(); err != nil {
+				return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.Tf("编辑器 %s 退出异常: %v", "editor %s exited abnormally: %v", editor, err))
+			}
+			return nil
+		},
+	}
 	configCmd.AddCommand(configPathCmd, configGetCmd, configSetCmd, configListCmd, configEditCmd)
+	return configCmd
 }
 
-var configPathCmd = &cobra.Command{
-	Use:   "path",
-	Short: i18n.T("打印配置文件路径", "print the config file path"),
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		cp, err := config.Path()
-		if err != nil {
-			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%s", i18n.Tf("定位配置路径失败: %v", "failed to locate config path: %v", err))
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), cp)
-		return nil
-	},
+// buildEditorCmd 构造编辑器命令：支持常见带参形式（如 EDITOR="code --wait" / "vim -u NONE"）
+// 及含空格的可执行路径（优先尝试整串 LookPath，失败再按引号/空白分词）。
+func buildEditorCmd(editor, targetPath string) (*exec.Cmd, error) {
+	editor = strings.TrimSpace(editor)
+	if editor == "" {
+		return nil, fmt.Errorf("%s", i18n.T("编辑器命令为空", "editor command is empty"))
+	}
+	if _, err := exec.LookPath(editor); err == nil {
+		return exec.Command(editor, targetPath), nil
+	}
+	tokens, err := splitCommandArgs(editor)
+	if err != nil || len(tokens) == 0 {
+		return nil, fmt.Errorf("%s: %v", i18n.Tf("无法解析编辑器命令 %q", "invalid editor command %q", editor), err)
+	}
+	return exec.Command(tokens[0], append(tokens[1:], targetPath)...), nil
 }
 
-var configGetCmd = &cobra.Command{
-	Use:   "get <key>",
-	Short: i18n.T("查看某项配置", "show one config value"),
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, _, err := config.Load()
-		if err != nil {
-			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%v", err)
-		}
-		v, ok := cfgValue(cfg, args[0])
-		if !ok {
-			return unknownKey(cmd, args[0])
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), v)
-		return nil
-	},
-}
-
-var configSetCmd = &cobra.Command{
-	Use:   "set <key> <value>",
-	Short: i18n.T("修改某项配置", "set one config value"),
-	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		stderr := cmd.ErrOrStderr()
-		cfg, _, err := config.Load()
-		if err != nil {
-			var fe *config.FileError
-			if !errors.As(err, &fe) {
-				return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
+func splitCommandArgs(s string) ([]string, error) {
+	var args []string
+	var cur strings.Builder
+	var quote rune
+	inToken := false
+	for i := 0; i < len(s); i++ {
+		ch := rune(s[i])
+		switch {
+		case quote != 0:
+			// 双引号内仅 \" 与 \\ 做转义，其余反斜杠按字面保留（兼容 Windows 路径如 "C:\Program Files\..."）
+			if ch == '\\' && quote == '"' && i+1 < len(s) && (s[i+1] == '"' || s[i+1] == '\\') {
+				i++
+				cur.WriteByte(s[i])
+			} else if ch == quote {
+				quote = 0
+			} else {
+				cur.WriteByte(s[i])
 			}
-			// 文件损坏时从默认值重建，避免用户被锁死
-			cfg = config.Default()
-		}
-		if err := cfgSetValue(&cfg, args[0], args[1]); err != nil {
-			return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-		}
-		if err := config.Save(cfg); err != nil {
-			return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-		}
-		p, _ := config.Path()
-		fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("已写入", "written"), p)
-		return nil
-	},
-}
-
-var configListCmd = &cobra.Command{
-	Use:   "list",
-	Short: i18n.T("列出全部配置（api_key 打码）", "list all config values (api_key masked)"),
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		cfg, _, err := config.Load()
-		if err != nil {
-			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%v", err)
-		}
-		out := cmd.OutOrStdout()
-		for _, k := range configKeys {
-			v, _ := cfgValue(cfg, k)
-			if k == "api_key" || k == "draw.api_key" || k == "decide.api_key" {
-				v = mask(v)
+		case ch == '\'' || ch == '"':
+			quote = ch
+			inToken = true
+		case ch == ' ' || ch == '\t':
+			if inToken {
+				args = append(args, cur.String())
+				cur.Reset()
+				inToken = false
 			}
-			fmt.Fprintf(out, "%s = %s\n", k, v)
+		default:
+			cur.WriteByte(s[i])
+			inToken = true
 		}
-		return nil
-	},
-}
-
-var configEditCmd = &cobra.Command{
-	Use:   "edit",
-	Short: i18n.T("用编辑器打开 config.yaml", "open config.yaml in an editor"),
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		stderr := cmd.ErrOrStderr()
-		p, err := config.Path()
-		if err != nil {
-			return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-		}
-		if _, err := os.Stat(p); os.IsNotExist(err) {
-			if err := config.Save(config.Default()); err != nil {
-				return exitcode.Fail(stderr, exitcode.Usage, "%v", err)
-			}
-		}
-		editor := firstNonEmpty(os.Getenv("VISUAL"), os.Getenv("EDITOR"), defaultEditor())
-		c := exec.Command(editor, p)
-		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-		if err := c.Run(); err != nil {
-			return exitcode.Fail(stderr, exitcode.Usage, "%s", i18n.Tf("编辑器 %s 退出异常: %v", "editor %s exited abnormally: %v", editor, err))
-		}
-		return nil
-	},
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unclosed quote %c", quote)
+	}
+	if inToken {
+		args = append(args, cur.String())
+	}
+	return args, nil
 }
 
 func defaultEditor() string {

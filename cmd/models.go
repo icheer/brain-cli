@@ -21,12 +21,12 @@ type modelsOptions struct {
 	jsonOut bool
 }
 
-var modelsOpts modelsOptions
-
-var modelsCmd = &cobra.Command{
-	Use:   "models [--refresh] [--json]",
-	Short: i18n.T("列出本地别名与网关可用模型", "list local aliases and gateway models"),
-	Long: i18n.T(`合并展示两部分：
+func newModelsCmd() *cobra.Command {
+	opts := &modelsOptions{}
+	modelsCmd := &cobra.Command{
+		Use:   "models [--refresh] [--json]",
+		Short: i18n.T("列出本地别名与网关可用模型", "list local aliases and gateway models"),
+		Long: i18n.T(`合并展示两部分：
   1. config.yaml aliases 段中的别名（含场景标注与 fallback 链）
   2. 网关 /v1/models 的实际可用列表（本地缓存，TTL 默认 24h）
 
@@ -36,12 +36,13 @@ var modelsCmd = &cobra.Command{
 
 --refresh forces a fetch; when the gateway is unreachable brain falls back
 to the cache (noted on stderr).`),
-	RunE: runModels,
-}
-
-func init() {
-	modelsCmd.Flags().BoolVar(&modelsOpts.refresh, "refresh", false, i18n.T("忽略缓存强制拉取 /v1/models", "ignore cache and force-fetch /v1/models"))
-	modelsCmd.Flags().BoolVar(&modelsOpts.jsonOut, "json", false, i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runModels(cmd, args, opts)
+		},
+	}
+	modelsCmd.Flags().BoolVar(&opts.refresh, "refresh", false, i18n.T("忽略缓存强制拉取 /v1/models", "ignore cache and force-fetch /v1/models"))
+	modelsCmd.Flags().BoolVar(&opts.jsonOut, "json", false, i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
+	return modelsCmd
 }
 
 type aliasJSON struct {
@@ -50,7 +51,7 @@ type aliasJSON struct {
 	Use    string   `json:"use,omitempty"`
 }
 
-func runModels(cmd *cobra.Command, _ []string) error {
+func runModels(cmd *cobra.Command, _ []string, modelsOpts *modelsOptions) error {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	cfg, warnings, err := config.Load()

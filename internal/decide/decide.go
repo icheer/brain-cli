@@ -52,7 +52,7 @@ type Client struct {
 
 // New 构造客户端；timeout 为传输层兜底，总预算由调用方经 ctx 控制。
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
-	return &Client{HTTP: &http.Client{Timeout: timeout}, BaseURL: baseURL, APIKey: apiKey}
+	return &Client{HTTP: gateway.NewHTTPClient(timeout), BaseURL: baseURL, APIKey: apiKey}
 }
 
 // Endpoint 实际请求端点（dry-run 展示与请求共用；不含鉴权参数）。

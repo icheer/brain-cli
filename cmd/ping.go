@@ -23,13 +23,13 @@ type pingOptions struct {
 	jsonOut bool
 }
 
-var pingOpts pingOptions
-
-var pingCmd = &cobra.Command{
-	Use: "ping [-m model] [--timeout 秒] [--json]",
-	Short: i18n.T("自检连通性 / 鉴权 / 模型清单（-m 时逐模型探测别名链）",
-		"self-check connectivity / auth / model list (with -m, probe each model in the chain)"),
-	Long: i18n.T(`快速自检（SKILL.md 引导 Agent 首次使用 brain 前先跑它）：
+func newPingCmd() *cobra.Command {
+	opts := &pingOptions{}
+	pingCmd := &cobra.Command{
+		Use: "ping [-m model] [--timeout 秒] [--json]",
+		Short: i18n.T("自检连通性 / 鉴权 / 模型清单（-m 时逐模型探测别名链）",
+			"self-check connectivity / auth / model list (with -m, probe each model in the chain)"),
+		Long: i18n.T(`快速自检（SKILL.md 引导 Agent 首次使用 brain 前先跑它）：
   1. 网关连通性
   2. api_key 鉴权
   3. default_model 别名解析与可用性
@@ -46,13 +46,14 @@ completion each). Being listed in /v1/models does not mean usable with your key;
 an actual probe is the only hard evidence.
 Results print line by line on stdout; --json emits exactly one object
 (success or failure, error shaped like ask --json).`),
-	RunE: runPing,
-}
-
-func init() {
-	pingCmd.Flags().IntVar(&pingOpts.timeout, "timeout", 20, i18n.T("每项检查的秒数上限（清单检查与逐模型探测各自独立计时）", "per-check timeout in seconds (list check and each probe are timed independently)"))
-	pingCmd.Flags().StringVarP(&pingOpts.model, "model", "m", "", i18n.T("别名或模型 ID：逐个探测其 fallback 链", "alias or model ID: probe each model of its fallback chain"))
-	pingCmd.Flags().BoolVar(&pingOpts.jsonOut, "json", false, i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPing(cmd, args, opts)
+		},
+	}
+	pingCmd.Flags().IntVar(&opts.timeout, "timeout", 20, i18n.T("每项检查的秒数上限（清单检查与逐模型探测各自独立计时）", "per-check timeout in seconds (list check and each probe are timed independently)"))
+	pingCmd.Flags().StringVarP(&opts.model, "model", "m", "", i18n.T("别名或模型 ID：逐个探测其 fallback 链", "alias or model ID: probe each model of its fallback chain"))
+	pingCmd.Flags().BoolVar(&opts.jsonOut, "json", false, i18n.T("单行 JSON 输出（机器可读）", "single-line JSON output (machine-readable)"))
+	return pingCmd
 }
 
 // pingJSON 是 ping --json 的输出结构（成败恒定一个对象，error 与 ask --json 同构）。
@@ -79,7 +80,7 @@ type pingProbeJSON struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func runPing(cmd *cobra.Command, _ []string) (retErr error) {
+func runPing(cmd *cobra.Command, _ []string, pingOpts *pingOptions) (retErr error) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	payload := pingJSON{}
@@ -164,14 +165,14 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 	if pingOpts.model == "" {
 		return nil
 	}
-	return probeChain(cmd.Context(), stdout, stderr, g, cfg.Aliases, &payload)
+	return probeChain(cmd.Context(), stdout, stderr, g, cfg.Aliases, pingOpts, &payload)
 }
 
 // probeChain 逐模型探测别名链（各发一次极小补全请求），结果写回 payload.Probes。
 // 判定：链上至少一个 OK 即成功；全部失败 exit 5；主模型不可用时 stderr 明示（静默
 // fallback 到次优模型的隐性损失，Agent 应能看见）。
 func probeChain(ctx context.Context, stdout, stderr io.Writer, g *gateway.Client,
-	aliases map[string]config.Alias, payload *pingJSON,
+	aliases map[string]config.Alias, pingOpts *pingOptions, payload *pingJSON,
 ) error {
 	chain, err := app.ModelChain(pingOpts.model, aliases)
 	if err != nil {

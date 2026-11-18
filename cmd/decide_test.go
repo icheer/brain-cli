@@ -63,19 +63,16 @@ func TestDecideInputValidation(t *testing.T) {
 		t.Fatalf("无 state 应 exit 1: code=%d stderr=%s", code, errStr)
 	}
 	// 无 questions
-	decideOpts = decideOptions{}
 	code, _, errStr = runBrain("decide", "some state")
 	if code != 1 || !strings.Contains(errStr, "questions") {
 		t.Fatalf("无 questions 应 exit 1: code=%d stderr=%s", code, errStr)
 	}
 	// --noul 格式错
-	decideOpts = decideOptions{}
 	code, _, errStr = runBrain("decide", "--noul", "no-equals-here", "state")
 	if code != 1 || !strings.Contains(errStr, "--noul") {
 		t.Fatalf("--noul 格式错应 exit 1: code=%d stderr=%s", code, errStr)
 	}
 	// ID 冲突（-Q 与 --noul）
-	decideOpts = decideOptions{}
 	code, _, errStr = runBrain("decide", "-Q", `{"q":{"type":"noul","instructions":"x"}}`, "--noul", "q=y", "state")
 	if code != 1 || !strings.Contains(errStr, "重复") {
 		t.Fatalf("ID 冲突应 exit 1: code=%d stderr=%s", code, errStr)
@@ -151,7 +148,6 @@ func TestDecideStdoutAndJSONContract(t *testing.T) {
 	}
 
 	// --json 恒定单对象外壳
-	decideOpts = decideOptions{}
 	code, out, errStr = runBrain("decide", "--json", "--noul", "q=x?", "state")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
@@ -262,7 +258,6 @@ func TestDecideMaxInputBytesFlag(t *testing.T) {
 		t.Fatalf("超限应 exit 6 且含 --max-input-bytes 提示: code=%d stderr=%s", code, errStr)
 	}
 
-	decideOpts = decideOptions{}
 	code, _, errStr = runBrain("decide", "--max-input-bytes", "64", "--noul", "q=x?", "too-long-state")
 	if code != 0 {
 		t.Fatalf("调大 --max-input-bytes 后应通过: code=%d stderr=%s", code, errStr)

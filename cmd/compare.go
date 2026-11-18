@@ -40,13 +40,13 @@ type compareOptions struct {
 	blind           bool
 }
 
-var compareOpts compareOptions
-
-var compareCmd = &cobra.Command{
-	Use: "compare -m <model>... [prompt...]",
-	Short: i18n.T("同一问题并行问多个模型，stdout 按模型分隔输出原文（--json 为 responses[]）",
-		"Ask several models the same question in parallel; stdout concatenates replies under model headers (--json gives responses[])"),
-	Long: i18n.T(`并行独立采样：把同一个问题同时发给 ≥2 个模型，各腿原文按分隔头拼接输出，
+func newCompareCmd() *cobra.Command {
+	opts := &compareOptions{}
+	compareCmd := &cobra.Command{
+		Use: "compare -m <model>... [prompt...]",
+		Short: i18n.T("同一问题并行问多个模型，stdout 按模型分隔输出原文（--json 为 responses[]）",
+			"Ask several models the same question in parallel; stdout concatenates replies under model headers (--json gives responses[])"),
+		Long: i18n.T(`并行独立采样：把同一个问题同时发给 ≥2 个模型，各腿原文按分隔头拼接输出，
 裁决留给你（或宿主 Agent）——brain 不内建裁判。compare 里的别名是「模型组快捷方式」：
 -m reason 展开为该别名链上的全部模型（与 ask 的链首位+容灾语义不同）；每条腿是具体模型，
 不做故障转移（静默转移会摧毁「谁回答了什么」的透明性），但同模型重试仍允许。
@@ -68,45 +68,46 @@ are spelled out on stderr and in --json. Examples:
   brain compare -m m-a,m-b -m m-c "list three risks"   # repeatable, comma-separated, mixes with aliases
   brain compare -m reason --json "reason it out" | jq -r '.responses[] | select(.ok) | .content'
   brain compare -m reason --blind "is this conclusion sound"   # prints Model_A/B; mapping on stderr`),
-	Args: cobra.ArbitraryArgs,
-	RunE: runCompare,
-}
-
-func init() {
-	compareCmd.Flags().StringArrayVarP(&compareOpts.models, "model", "m", nil,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCompare(cmd, args, opts)
+		},
+	}
+	compareCmd.Flags().StringArrayVarP(&opts.models, "model", "m", nil,
 		i18n.T("模型别名（展开为整组）或字面模型 ID，可重复且支持逗号分隔；至少展开出 2 个模型",
 			"model alias (expands to its whole group) or literal model ID; repeatable, comma-separated; must resolve to >= 2 models"))
-	compareCmd.Flags().StringArrayVarP(&compareOpts.files, "file", "f", nil,
+	compareCmd.Flags().StringArrayVarP(&opts.files, "file", "f", nil,
 		i18n.T("文本文件，可多次", "text file, repeatable"))
-	compareCmd.Flags().StringArrayVarP(&compareOpts.images, "image", "i", nil,
+	compareCmd.Flags().StringArrayVarP(&opts.images, "image", "i", nil,
 		i18n.T("图片（本地路径或 URL），可多次", "image (local path or URL), repeatable"))
-	compareCmd.Flags().StringArrayVarP(&compareOpts.system, "system", "s", nil,
+	compareCmd.Flags().StringArrayVarP(&opts.system, "system", "s", nil,
 		i18n.T("系统提示词，可重复（以空行连接）", "system prompt, repeatable (joined by a blank line)"))
-	compareCmd.Flags().IntVar(&compareOpts.timeout, "timeout", 0,
+	compareCmd.Flags().IntVar(&opts.timeout, "timeout", 0,
 		i18n.T("整体超时秒数（全部腿共享同一预算，墙钟≈最慢腿）",
 			"overall timeout in seconds (all legs share one budget; wall clock ≈ slowest leg)"))
-	compareCmd.Flags().Int64Var(&compareOpts.maxInputBytes, "max-input-bytes", 0,
+	compareCmd.Flags().Int64Var(&opts.maxInputBytes, "max-input-bytes", 0,
 		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
-	compareCmd.Flags().StringVarP(&compareOpts.reasoningEffort, "reasoning-effort", "e", "",
+	compareCmd.Flags().StringVarP(&opts.reasoningEffort, "reasoning-effort", "e", "",
 		i18n.T("推理深度纯透传（档位因模型而异；不设则用各模型默认）",
 			"reasoning effort, passed through as-is (model-specific tiers; unset = model default)"))
-	compareCmd.Flags().IntVar(&compareOpts.maxOutputTokens, "max-output-tokens", 0,
+	compareCmd.Flags().IntVar(&opts.maxOutputTokens, "max-output-tokens", 0,
 		i18n.T("输出预算（max_tokens）纯透传；0=不传用网关默认",
 			"output budget (max_tokens), passed through as-is; 0 = omit, gateway default"))
-	compareCmd.Flags().StringArrayVar(&compareOpts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
-	compareCmd.Flags().StringArrayVar(&compareOpts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
-	compareCmd.Flags().BoolVarP(&compareOpts.quiet, "quiet", "q", false,
+	compareCmd.Flags().StringArrayVar(&opts.extraBody, "extra-body", nil, extraBodyFlagsHelp())
+	compareCmd.Flags().StringArrayVar(&opts.extraHeaders, "extra-headers", nil, extraHeadersFlagsHelp())
+	compareCmd.Flags().BoolVarP(&opts.quiet, "quiet", "q", false,
 		i18n.T("静默 stderr：关闭心跳/耗时提示（警告与错误保留）",
 			"quiet stderr: no heartbeat/elapsed chatter (warnings and errors kept)"))
-	compareCmd.Flags().BoolVar(&compareOpts.dryRun, "dry-run", false,
+	compareCmd.Flags().BoolVar(&opts.dryRun, "dry-run", false,
 		i18n.T("只输出将发送的 messages 与解析出的模型组（单行 JSON），不发起网络请求",
 			"print the assembled messages and resolved model group (single-line JSON) without any network call"))
-	compareCmd.Flags().BoolVar(&compareOpts.blind, "blind", false,
+	compareCmd.Flags().BoolVar(&opts.blind, "blind", false,
 		i18n.T("匿名盲测：输出中模型名替换为 Model_A/B/…（真名映射走 stderr），防裁决的品牌偏见",
 			"blind review: model names replaced with Model_A/B/... in output (real names on stderr), guarding the adjudicator against brand bias"))
-	compareCmd.Flags().BoolVar(&compareOpts.jsonOut, "json", false,
+	compareCmd.Flags().BoolVar(&opts.jsonOut, "json", false,
 		i18n.T("单行 JSON 输出（成败恒定一个对象，responses[] 每腿含 content/usage/latency/error）",
 			"single-line JSON output (always exactly one object; responses[] carries content/usage/latency/error per leg)"))
+	return compareCmd
 }
 
 // compareLeg 是一条并行采样腿的结果（成功或失败都占一席，顺序=解析序）。
@@ -162,7 +163,7 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-func runCompare(cmd *cobra.Command, args []string) (retErr error) {
+func runCompare(cmd *cobra.Command, args []string, compareOpts *compareOptions) (retErr error) {
 	stdout := cmd.OutOrStdout()
 	stderr := &lockedWriter{w: cmd.ErrOrStderr()}
 

@@ -18,16 +18,18 @@ import (
 	"github.com/icheer/brain-cli/internal/i18n"
 )
 
-var initOpts struct {
+type initOptions struct {
 	baseURL      string
 	defaultModel string
 	force        bool
 }
 
-var initCmd = &cobra.Command{
-	Use:   "init [--base-url <url>] [--default-model <别名>]",
-	Short: i18n.T("交互式引导写入 config.yaml（首次配置）", "interactive first-time setup writing config.yaml"),
-	Long: i18n.T(`首次使用引导：依次询问 base_url、api_key、default_model，写入 config.yaml（0600）。
+func newInitCmd() *cobra.Command {
+	opts := &initOptions{}
+	initCmd := &cobra.Command{
+		Use:   "init [--base-url <url>] [--default-model <别名>]",
+		Short: i18n.T("交互式引导写入 config.yaml（首次配置）", "interactive first-time setup writing config.yaml"),
+		Long: i18n.T(`首次使用引导：依次询问 base_url、api_key、default_model，写入 config.yaml（0600）。
 已提供同名 flag 的项跳过询问，便于脚本化：
 
   brain init --base-url https://gw.example.com/v1 --default-model fast
@@ -51,16 +53,17 @@ BRAIN_API_KEY instead. Optionally generates an aliases section afterwards
 sets up the image-generation draw section (model required; blank
 base_url/api_key fall back to the top-level values) — rebuilding an
 existing config keeps its aliases and draw section by default.`),
-	RunE: runInit,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runInit(cmd, args, opts)
+		},
+	}
+	initCmd.Flags().StringVar(&opts.baseURL, "base-url", "", i18n.T("网关地址（缺省进入交互询问）", "gateway URL (interactive prompt if omitted)"))
+	initCmd.Flags().StringVar(&opts.defaultModel, "default-model", "", i18n.T("默认模型别名（缺省进入交互询问，可留空跳过）", "default model alias (interactive prompt if omitted; blank to skip)"))
+	initCmd.Flags().BoolVar(&opts.force, "force", false, i18n.T("已存在 config.yaml 时跳过覆盖确认", "skip the overwrite confirmation when config.yaml exists"))
+	return initCmd
 }
 
-func init() {
-	initCmd.Flags().StringVar(&initOpts.baseURL, "base-url", "", i18n.T("网关地址（缺省进入交互询问）", "gateway URL (interactive prompt if omitted)"))
-	initCmd.Flags().StringVar(&initOpts.defaultModel, "default-model", "", i18n.T("默认模型别名（缺省进入交互询问，可留空跳过）", "default model alias (interactive prompt if omitted; blank to skip)"))
-	initCmd.Flags().BoolVar(&initOpts.force, "force", false, i18n.T("已存在 config.yaml 时跳过覆盖确认", "skip the overwrite confirmation when config.yaml exists"))
-}
-
-func runInit(cmd *cobra.Command, _ []string) error {
+func runInit(cmd *cobra.Command, _ []string, initOpts *initOptions) error {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	p, err := config.Path()
