@@ -182,19 +182,24 @@ trap 'rm -rf "$TMP"' EXIT
 # 智能升级检测（仅无参数调用时；显式 --global/--link 精确执行不检测）：
 # 按既有安装形态自动选择模式。软链优先（最特异）；Git Bash 的 --link 退化形态
 # （全局+技能目录各一份副本）归入 both 一并更新。
+# 注意：brain update 委托前会把正在运行的二进制自改名为 .old，故 .old 同样视作该位置存在既有安装。
 if [ -z "$MODE_FLAGS" ]; then
   GBIN="${GLOBAL_BIN}/brain${EXT}"
   LBIN="${BRAIN_INSTALL_DIR:-$DIR/bin}/brain${EXT}"
+  HAS_GBIN=0
+  HAS_LBIN=0
+  if [ -e "$GBIN" ] || [ -e "${GBIN}.old" ]; then HAS_GBIN=1; fi
+  if [ -e "$LBIN" ] || [ -e "${LBIN}.old" ]; then HAS_LBIN=1; fi
   if [ -L "$GBIN" ]; then
     MODE="link"
     echo "检测到全局软链（--link 形态），按同模式升级"
-  elif [ -e "$GBIN" ] && [ -e "$LBIN" ]; then
+  elif [ "$HAS_GBIN" -eq 1 ] && [ "$HAS_LBIN" -eq 1 ]; then
     MODE="both"
     echo "检测到全局与技能目录各有一份二进制（Git Bash 的 --link 复制形态或双重安装），两处均更新"
-  elif [ -e "$GBIN" ]; then
+  elif [ "$HAS_GBIN" -eq 1 ]; then
     MODE="global"
     echo "检测到全局二进制（--global 形态），按同模式升级"
-  elif [ -e "$LBIN" ]; then
+  elif [ "$HAS_LBIN" -eq 1 ]; then
     echo "检测到技能目录二进制，就地升级"
   fi
 fi
@@ -203,12 +208,31 @@ echo "下载 brain ${VER} (${OS}/${ARCH})"
 curl -fsSL "$URL" -o "$TMP/${BASE}.tar.gz"
 curl -fsSL "https://github.com/${REPO}/releases/download/${VER}/SHA256SUMS" -o "$TMP/SHA256SUMS"
 
-# 校验压缩包哈希（对应 goreleaser 产出的 SHA256SUMS）
-WANT="$(grep " ${BASE}.tar.gz\$" "$TMP/SHA256SUMS" | awk '{print $1}')"
-if [ -n "$WANT" ]; then
-  echo "${WANT}  ${TMP}/${BASE}.tar.gz" | sha256sum -c - >/dev/null || { echo "SHA256 校验失败" >&2; exit 1; }
-else
-  echo "警告: SHA256SUMS 中未找到 ${BASE}.tar.gz，跳过校验" >&2
+# sha256_file 跨平台计算文件 SHA256：依次兼容 Linux/Git Bash (sha256sum)、
+# macOS 原生 (shasum -a 256) 与通用兜底 (openssl)。
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print tolower($1)}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print tolower($1)}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$1" | awk '{print tolower($NF)}'
+  else
+    echo "错误: 未找到 sha256sum / shasum / openssl，无法完成 SHA256 校验" >&2
+    return 1
+  fi
+}
+
+# 校验压缩包哈希（Fail-Closed：缺失条目或摘要不符一律中止安装，拒绝执行未校验二进制）
+WANT="$(awk -v f="${BASE}.tar.gz" '$2 == f || $2 == "*"f {print tolower($1); exit}' "$TMP/SHA256SUMS")"
+if [ -z "$WANT" ]; then
+  echo "错误: SHA256SUMS 中未找到 ${BASE}.tar.gz 的校验记录，中止安装" >&2
+  exit 1
+fi
+GOT="$(sha256_file "$TMP/${BASE}.tar.gz")"
+if [ "$GOT" != "$WANT" ]; then
+  echo "错误: SHA256 校验失败（期望 ${WANT}，实际 ${GOT}）" >&2
+  exit 1
 fi
 tar -xzf "$TMP/${BASE}.tar.gz" -C "$TMP" "brain${EXT}"
 # v0.10.3 起包内含技能文档（goreleaser 按仓库相对路径打包，成员名带 skills/brain/ 前缀）；

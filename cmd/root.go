@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -101,6 +102,8 @@ func Execute() {
 func applyUserAgent(cfg config.Config) {
 	if cfg.UserAgent != "" {
 		gateway.UserAgent = cfg.UserAgent
+	} else {
+		gateway.UserAgent = "brain/" + version
 	}
 }
 
@@ -123,7 +126,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	rootCmd.SetArgs(args)
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
-	if err := rootCmd.Execute(); err != nil {
+	ctx := rootCmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, sub := range rootCmd.Commands() {
+		sub.SetContext(ctx)
+	}
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		var ee *exitcode.Error
 		if errors.As(err, &ee) {
 			return ee.Code

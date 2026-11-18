@@ -6,20 +6,24 @@ package cmd
 // 「自升级 update」行与 3.7 节。
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/icheer/brain-cli/internal/exitcode"
+	"github.com/icheer/brain-cli/internal/gateway"
 	"github.com/icheer/brain-cli/internal/i18n"
 )
 
@@ -81,7 +85,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// 兜底清尸：上次 update 极端情况下残留的 .old（此刻未被运行中实例锁定即可删）
 	exeReal, _ := resolvedExePath()
 	if exeReal != "" {
-		_ = os.Remove(exeReal + oldSuffix())
+		_ = os.Remove(exeReal + ".old")
+		if runtime.GOOS == "windows" {
+			_ = os.Remove(exeReal + ".exe.old") // 兼容清理 v0.13.0 旧后缀残留
+		}
 	}
 
 	skillDir, err := findSkillDir(updateOpts.skillDir)
@@ -91,11 +98,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 				i18n.T("--skill-dir 指定的目录不含 install.sh：", "--skill-dir points to a dir without install.sh: ")+updateOpts.skillDir)
 		}
 		return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Usage, "%s", i18n.T("未发现技能目录（需含 SKILL.md 与 install.sh）。\n"+
-				"指引：--skill-dir 显式指定；或重跑一次技能目录里的 install.sh（bash <skill>/install.sh）；\n"+
-				"go install 用户请自行 go install github.com/icheer/brain-cli@latest",
-				"skill dir not found (needs SKILL.md and install.sh).\n"+
-					"Hints: pass --skill-dir explicitly; or re-run install.sh from your skill dir (bash <skill>/install.sh);\n"+
-					"go install users: go install github.com/icheer/brain-cli@latest yourself"))
+			"指引：--skill-dir 显式指定；或重跑一次技能目录里的 install.sh（bash <skill>/install.sh）；\n"+
+			"go install 用户请自行 go install github.com/icheer/brain-cli@latest",
+			"skill dir not found (needs SKILL.md and install.sh).\n"+
+				"Hints: pass --skill-dir explicitly; or re-run install.sh from your skill dir (bash <skill>/install.sh);\n"+
+				"go install users: go install github.com/icheer/brain-cli@latest yourself"))
 	}
 
 	latest, err := fetchLatestTag()
@@ -104,16 +111,17 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			i18n.T("查询最新版本失败：", "failed to fetch latest version: ")+err.Error())
 	}
 	cur := updateVersionFn()
+	cmp := cmpVersion(cur, latest)
 
 	if updateOpts.check {
 		ver := i18n.T("已是最新", "up to date")
-		if cmpVersion(cur, latest) != 0 {
+		if cmp < 0 {
 			ver = i18n.T("有新版本", "update available")
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "current %s | latest %s | %s | skill %s\n", cur, latest, ver, skillDir)
 		return nil
 	}
-	if cmpVersion(cur, latest) == 0 {
+	if cmp >= 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), i18n.T("brain %s 已是最新版本（技能目录 %s）\n",
 			"brain %s is already the latest release (skill dir %s)\n"), cur, skillDir)
 		return nil
@@ -122,11 +130,33 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), i18n.T("发现技能目录 %s，委托 install.sh 升级 %s → %s\n",
 		"skill dir %s found; delegating to install.sh for %s -> %s\n"), skillDir, cur, latest)
 
+	// 信号保护：一旦自身改名为 .old，Ctrl+C（SIGINT/SIGTERM）不得直接裸杀父进程，
+	// 必须等子进程退出后执行回滚，防止中断留下"无 brain 可执行文件"的状态。
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	interrupted := make(chan struct{})
+	go func() {
+		select {
+		case <-sigCh:
+			close(interrupted)
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	// 必须在自改名前判定安装形态（改名后原路径消失，旧版 install.sh 裸跑会误判 global/both 为 local）
+	instArgs, skillBin := installerArgs(exeReal, skillDir)
+	isSkillBin := samePath(exeReal, skillBin)
+	oldPath := exeReal + ".old"
+
 	// 自改名 .old：install.sh 用 cp 覆写目标——Unix 上运行中二进制被 cp 撞 ETXTBSY、
 	// Windows 撞文件锁；改名运行中的 exe 两平台均合法，cp 落全新 inode 畅通。
 	renamed := false
-	if exeReal != "" {
-		if err := os.Rename(exeReal, exeReal+oldSuffix()); err == nil {
+	if exeReal != "" && fileExists(exeReal) {
+		if err := os.Rename(exeReal, oldPath); err == nil {
 			renamed = true
 		} else {
 			fmt.Fprintf(cmd.ErrOrStderr(), i18n.T("警告: 自改名 .old 失败（%v），继续委托——若安装器覆写失败将报错退出\n",
@@ -134,18 +164,33 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	inst := exec.Command("bash", filepath.Join(skillDir, "install.sh"))
+	inst := exec.CommandContext(ctx, "bash", instArgs...)
 	inst.Stdin, inst.Stdout, inst.Stderr = os.Stdin, os.Stdout, os.Stderr
 	runErr := inst.Run()
 
-	if runErr != nil {
-		// 回滚：子进程失败且原位没有新文件时，把改名让位的自己搬回去，
+	wasInt := false
+	select {
+	case <-interrupted:
+		wasInt = true
+	default:
+		if cmd.Context().Err() != nil {
+			wasInt = true
+		}
+	}
+
+	if runErr != nil || wasInt {
+		// 回滚：子进程失败/中断且原位没有新文件时，把改名让位的自己搬回去，
 		// 避免一次失败的升级留下"没有 brain 可执行文件"的系统。
 		if renamed {
-			if _, statErr := os.Stat(exeReal); statErr != nil && os.Rename(exeReal+oldSuffix(), exeReal) == nil {
+			if _, statErr := os.Stat(exeReal); statErr != nil && os.Rename(oldPath, exeReal) == nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), i18n.T("已回滚：%s 复位（升级未完成）\n",
 					"rolled back: %s restored (upgrade incomplete)\n"), exeReal)
+			} else if statErr == nil {
+				cleanupOld(exeReal)
 			}
+		}
+		if wasInt {
+			return exitcode.Fail(cmd.ErrOrStderr(), exitcode.Interrupt, "%s", i18n.T("被中断", "interrupted"))
 		}
 		if ee, ok := runErr.(*exec.ExitError); ok {
 			// install.sh 的退出码原样转发（其失败语义由其自身定义）；信号致死无码 → 1
@@ -161,7 +206,19 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if renamed {
-		cleanupOld(exeReal)
+		if _, statErr := os.Stat(exeReal); statErr == nil {
+			cleanupOld(exeReal)
+		} else {
+			// install.sh 退出 0 但未覆盖 exeReal（如 go install / 自定义路径副本 + 候选技能目录）：
+			// 将 .old 搬回原位，杜绝误删用户当前正在使用的可执行文件。
+			_ = os.Rename(oldPath, exeReal)
+			if !isSkillBin {
+				fmt.Fprintf(cmd.ErrOrStderr(), "brain: %s\n",
+					i18n.Tf("警告: 当前运行的 %s 不在 install.sh 更新目标内，已保留原文件（技能目录 %s 已升级；若由 go install 或自定义路径安装请另行更新）",
+						"warning: running binary %s is outside install.sh targets and was kept as-is (skill dir %s upgraded; update separately if installed via go install or custom path)",
+						exeReal, skillDir))
+			}
+		}
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), i18n.T("brain %s → %s 完成\n", "brain %s -> %s done\n"), cur, latest)
 	return nil
@@ -241,13 +298,13 @@ func fetchLatestTag() (string, error) {
 			continue
 		}
 		if resp.StatusCode != 200 {
-			return "", fmt.Errorf("HTTP %d: %.200s", resp.StatusCode, body)
+			return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, gateway.OneLine(string(body), 200))
 		}
 		var payload struct {
 			TagName string `json:"tag_name"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil || payload.TagName == "" {
-			return "", fmt.Errorf("invalid response: %.200s", body)
+			return "", fmt.Errorf("invalid response: %s", gateway.OneLine(string(body), 200))
 		}
 		return payload.TagName, nil
 	}
@@ -289,11 +346,57 @@ func cmpVersion(a, b string) int {
 	return 0
 }
 
-func oldSuffix() string {
+// installerArgs 计算传给 install.sh 的参数及技能目录内目标二进制路径：
+// 当运行中的二进制正是全局副本（--global 或 Windows Git Bash 双副本）时，
+// 自改名 .old 会让未识别 .old 的旧版 install.sh 看不见原全局文件而退化为 local，
+// 故对纯全局形态显式补 --global，对 Windows 双副本显式补 --link。
+func installerArgs(exeReal, skillDir string) ([]string, string) {
+	script := filepath.Join(skillDir, "install.sh")
+	bin := "brain"
 	if runtime.GOOS == "windows" {
-		return ".exe.old"
+		bin = "brain.exe"
 	}
-	return ".old"
+	instDir := os.Getenv("BRAIN_INSTALL_DIR")
+	if instDir == "" {
+		instDir = filepath.Join(skillDir, "bin")
+	}
+	skillBin := filepath.Join(instDir, bin)
+
+	globalDir := os.Getenv("BRAIN_GLOBAL_BIN")
+	if globalDir == "" {
+		if runtime.GOOS == "windows" {
+			if h, err := updateHomeDirFn(); err == nil && h != "" {
+				globalDir = filepath.Join(h, "bin")
+			}
+		} else {
+			globalDir = "/usr/local/bin"
+		}
+	}
+	if exeReal != "" && globalDir != "" && samePath(exeReal, filepath.Join(globalDir, bin)) {
+		if !fileExists(skillBin) {
+			return []string{script, "--global"}, skillBin
+		}
+		if runtime.GOOS == "windows" {
+			return []string{script, "--link"}, skillBin
+		}
+	}
+	return []string{script}, skillBin
+}
+
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if fi1, err1 := os.Stat(a); err1 == nil {
+		if fi2, err2 := os.Stat(b); err2 == nil && os.SameFile(fi1, fi2) {
+			return true
+		}
+	}
+	ca, cb := filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(ca, cb)
+	}
+	return ca == cb
 }
 
 func fileExists(p string) bool {
@@ -305,7 +408,7 @@ func fileExists(p string) bool {
 // 零残留零延迟进程）；Windows 运行中不可删，派生 cmd 延迟清尸（系统自带零依赖，
 // ping -n 3 ≈ 2s 覆盖本进程退出），失败则留给下次 update 启动时的兜底清扫。
 func cleanupOld(exeReal string) {
-	old := exeReal + oldSuffix()
+	old := exeReal + ".old"
 	if runtime.GOOS == "windows" {
 		_ = exec.Command("cmd", "/c",
 			fmt.Sprintf(`ping -n 3 127.0.0.1 >nul & del /f /q "%s"`, old)).Start()
