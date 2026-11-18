@@ -20,9 +20,9 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 | J2 | 全新 Windows Git Bash：同 J1，装 brain.exe、全局 ~/bin、PATH 提示 | dry + live 实机 | 模拟 MINGW 环境（fake uname/curl）+ 用户实机 | ⚠️ 实机止于 v0.10.1，此后仅模拟 | v0.10.5 (dry) |
 | J3 | 存量升级裸跑：四种安装形态（全局软链 / 全局二进制 / 双副本 / 仅技能目录）自动检测、按同模式升级 | live | 发版后本地安装器冒烟（软链形态）；其余形态开发期实测 | ⚠️ 仅软链形态随发版回归 | v0.13.0 |
 | J4 | 升级三方同版本：binary / SKILL.md / install.sh 与 Release 一致 | live | 发版后核对三者版本一致 | ✅ | v0.13.0 |
-| J5 | `sh install.sh`（dash 环境）：一行明确指引退出，不抛 Illegal option | dry | dash 显式调用 | ✅ | v0.10.5 |
+| J5 | `sh install.sh`（dash 环境）：一行明确指引退出，不抛 Illegal option（中英双语） | dry | dash 显式调用 + CI 门禁 | ✅ | v0.13.2 |
 | J6 | 旧版环境 wget 最新 install.sh 手动复制一次，此后进入自动升级轨道 | live | 用户 0.10.2 VPS 实操 | ✅ | v0.10.5 |
-| J19 | 卸载：四形态逐一反向拆除 + 空环境幂等 + 悬空软链 + 互斥参数拒绝 | dry | 沙盒矩阵（BRAIN_INSTALL_DIR/BRAIN_GLOBAL_BIN 重定向） | ✅ | v0.10.6 |
+| J19 | 卸载：四形态逐一反向拆除 + 空环境幂等 + 悬空软链 + 互斥参数拒绝 + 中英双语 | dry | 沙盒矩阵（BRAIN_INSTALL_DIR/BRAIN_GLOBAL_BIN 重定向） | ✅ | v0.13.2 |
 
 ## 配置与首次使用
 
@@ -45,18 +45,18 @@ CUJ（Critical User Journey）= 一条真实用户从头走到底的完整路径
 | # | 旅程 | 变体 | 验证方式 | 状态 | 最近验证 |
 | --- | --- | --- | --- | --- | --- |
 | J13 | compare 并发：多腿 + `--blind` 匿名 + `--json` responses[] | live | 真网关 2 腿实弹 | ✅ | v0.10.x |
-| J14 | council 干跑：`--order` 三策略调度矩阵、透镜表展开（席位认领展开后模型 ID）、缺席/SIGINT 语义 | dry | 单测矩阵 + `--dry-run` | ✅ | v0.10.4 |
+| J14 | council 干跑：`--order` 三策略调度矩阵、`--blind` 全链路匿名、透镜表展开与误写别名告警、缺席/SIGINT 语义 | dry | 单测矩阵 + `--dry-run` | ✅ | v0.13.2 |
 | J15 | council 实弹小规模：2 席 2 轮，stdout 分隔头时间序、末轮自动收尾 | live | 真网关 | ✅ | v0.10.4 |
 | J20 | draw：无 draw 段 exit 7 指引 → dry-run 零网络 → live 1K/2K 文生图 + `-i` 参考图编辑 → `--json` 恒定单对象 → 退出码映射（401→2）；**双协议各自 live 至少一发**；`draw.type` 覆盖与 base_url 智能拼接抽查；`--extra-body` 透传（openai 顶层 / gemini imageConfig）与保留字拒绝抽查 | dry + live | httptest 矩阵 + 真实网关（gemini 原生 + openai images 双路径；extras dry 双协议、`-i` edits live 即 banner 补址一发） | ✅ | v0.11.4 |
 | J21 | decide：无 decide 段 exit 7 指引 → `-Q`/`--noul` 合并与 ID 冲突 exit 1 → dry-run 零网络 → live 单 state 多问（noul+choice+score 混合）→ 默认 stdout=answers JSON 可 jq、`--json` 外壳恒定单对象 → 退出码映射（401→2/超时→4）→ `--extra-body` 保留字拒绝 → 逃生口图片路径 dry-run 形状抽查 | dry + live | httptest 矩阵 + 真实 TypeSafe wire 端点（OpenRouter `google/gemini-decision-1`：live 混合三型一发 652ms + `--json` 外壳一发 413ms，usage/cost 透传 $9.6e-06） | ✅ | v0.12.0 |
-| J22 | update：无技能目录 exit 1 指引（--global 裸装/go install 自管）→ 发现链三层（实路径向上/候选表 ~/.claude\|.codex\|.agents/--skill-dir 显式）→ `--check` 零下载报 current/latest（本地高于远端不反向降级）→ live 就地升级 old→new（.old 零残留、失败与 SIGINT 中断均回滚、无关路径二进制不误删、install.sh 识别 .old 形态且 SHA256 Fail-Closed）→ install.sh 退出码原样转发 | dry + live | httptest + 沙盒 install.sh 矩阵 + 真实全流程 | ✅ | v0.13.1 |
+| J22 | update：无技能目录 exit 1 指引（--global 裸装/go install 自管）→ 发现链三层（实路径向上/候选表 ~/.claude\|.codex\|.agents/--skill-dir 显式）→ `--check` 零下载报 current/latest（本地高于远端不反向降级、GITHUB_TOKEN 提额与 403→302 重定向兜底）→ live 就地升级 old→new（.old 零残留、失败与 SIGINT 中断均回滚、无关路径二进制不误删、install.sh 识别 .old 形态且 SHA256 Fail-Closed）→ install.sh 退出码原样转发 | dry + live | httptest + 沙盒 install.sh 矩阵 + 真实全流程 | ✅ | v0.13.2 |
 
 ## 宿主集成（最重要的欠账区）
 
 | # | 旅程 | 变体 | 验证方式 | 状态 | 最近验证 |
 | --- | --- | --- | --- | --- | --- |
 | J16 | 宿主 Agent 仅凭 SKILL.md 自主决定**是否**调用 brain（该调调、不该调不调、一次任务节流 ≤3 次） | live | 真实任务 trace 复盘触发率 | ⬜ | — |
-| J17 | 宿主检索 SKILL.md 能找到 council 章节并正确计算席位×轮次预算 | dry | 新副本 grep 探针 | ✅ | v0.10.3 |
+| J17 | 宿主检索 SKILL.md 能找到 council 章节并正确计算席位×轮次预算；frontmatter 合法且代码块子命令与 CLI 注册表零漂移 | dry | 单测静态守卫（`skill_test.go`）+ grep 探针 | ✅ | v0.13.2 |
 | J18 | 超时协作：宿主 Bash 超时 > brain --timeout，长 council 不被宿主先杀 | live | 真宿主跑长 council | ⚠️ 开发期实弹过，未做专项 | — |
 
 ## 事故登记（本表存在的理由）

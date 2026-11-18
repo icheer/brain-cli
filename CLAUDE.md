@@ -2,22 +2,27 @@
 
 ## 项目是什么
 
-`brain`：给宿主 Agent 用的大模型网关外脑 CLI（Go）。通过 OpenAI Chat Completions 兼容协议（`/v1/chat/completions` + `/v1/models`）调用网关，定位是纯咨询/分析工具，**不做** Function Calling、不做多轮会话状态。
+`brain`：给宿主 Agent 用的大模型网关外脑 CLI（Go）。通过 OpenAI Chat Completions 兼容协议（`/v1/chat/completions` + `/v1/models`）及专用协议（TypeSafe `/v1/systemone`、Gemini/OpenAI Images）调用外部模型，定位是纯咨询/分类/生图工具，**不做** Function Calling、不做多轮会话状态。
 
 ## 开发上下文入口
 
-- **先读 [DESIGN.md](DESIGN.md) 第 0 节「已定决策」**——两轮设计评审敲定的结论，不要重新讨论已定项
-- 当前状态：**v0.13.1 已发布（M0–M13；v0.13.1 可靠性与一致性加固——update 非软链形态防自删+SIGINT 回滚+预发布防降级、install.sh SHA256 Fail-Closed 兼 macOS shasum、429/503 模型错误误判修复、UTF-8 字符边界安全截断、draw edits multipart 图片 MIME、OpenRouter delta.reasoning 兼容与 SSE Builder 缓冲、models.json 按 base_url 隔离、ping/models 补齐 user_agent 与权限告警、decide/draw 补 --max-input-bytes 及单管道/UTF-8 校验；v0.13.0 `brain update` 委托式自升级（M13）——Go 只做发现/查版本/派活/收尾，下载与布局刷新全委托技能目录 install.sh（防双实现漂移）；发现链三层：--skill-dir 显式 → EvalSymlinks 实路径向上 ≤3 级找 SKILL.md+install.sh → 候选表 ~/.claude|.codex|.agents/skills/brain（无 manifest、不扫盘、install.sh 零改动）；GitHub releases/latest 版本比对（429/5xx/网错重试 ≤3，--check 零下载）；委托前实路径自改名 .old——Unix 上 install.sh 的 cp 覆写运行中二进制撞 ETXTBSY、Windows 撞锁，改名两平台均合法；同步执行转发退出码，失败且原位无新文件自动回滚；Unix 立即删 .old（unlink 运行中二进制合法）、Windows 派生 cmd ping 延迟清尸+下次启动兜底；无技能目录 exit 1 指引（--global 裸装/go install 自管，v1 不做 Go 原生下载器）；无 --json；v0.13.0 文档增量——README 灵感来源小节（黄仁勋多 AI 交叉验证致敬，CNN GPS 2025-07-13 逐字引文+中译+北京链博会转述+作者个人致敬）、一句话安装改三步 Agent 显式指引、SKILL decide 三题型示例（判断/选择/打分）+ TypeSafe llms.txt 官方入口）；v0.12.1 小版本——五原语展示序 2026-11-12 调整为 ask/compare/council/decide/draw（decide 与咨询三原语同族前置、draw 甜点第五；注册序/README 中英/SKILL 同步）+ SKILL 增补 bash 批量循环 stdin 继承坑（while read 内命令替换继承 stdin 吃掉题集，`</dev/null` 断开，ask 等同理；批量 decide 30 条实测发现）；v0.12.0 `brain decide` 决策原语（M12）——System One 类型化判断，仅 TypeSafe wire（POST /v1/systemone，base_url 智能拼接同 draw）；state=ask 同款装配（positional/管道/-f+XML）、questions=-Q <json|@file>（json.RawMessage 有序构建不重排键序——Amazon 实测键序可移动概率 0.19）+ --noul <id>=<指令> 速记（ID 冲突 exit 1）；默认 stdout=answers 原样 JSON（可 jq，失败 stdout 空）、--json 恒定单对象外壳；同模型重试（429/5xx/网络 ≤3 次）不跨模型转移（概率校准基准不可换）；图片无内置语法仅逃生口（assets+Danger-Zone 头，保留字 state/questions/model）；decide: 配置段（无 type 单方言）+ BRAIN_DECIDE_* + init 保留与引导；节流 ≤5/任务，SKILL 定位句「类型化仅保证格式合法不免疫类型化幻觉——只用于可逆的排序与分流」；来源：两轮 council（辩题+场景头脑风暴）+缺席席补位校准，语料 research/ 本地不入库；v0.11.4 draw 透传口——--extra-body/--extra-headers 与 chat 同构，落点按协议方言：openai 请求体顶层 assign（grok 的 aspect_ratio/resolution 等私有参数）、gemini 合并进 generationConfig.imageConfig，保留字 openai model/prompt/n/size/quality/image、gemini aspectRatio/imageSize、headers 加 x-goog-api-key；banner 补仓库地址；v0.11.3 XML 区隔加固——不可信内容（附件/stdin/council 发言）保留字最小转义（撞 user_message/attachment/stdin/transcript/speech 标签名的 `<`→`&lt;`，杜绝伪造块边界/假发言记录，其余尖括号零影响）+ `<attachment id>` 序号（1 起、`-f` 顺序）+ 声明注入判定结构化（问题里标签字面量不误触发）；v0.11.2 init 向导 draw 可选步骤 + 修复覆盖重建静默清空 draw 段；v0.11.1 修复 draw openai 路径 n 类型 bug——请求体 n 必须是 JSON 数字，字符串 "1" 会让 new-api 系网关的 uint 字段 400，golden 测试曾把错误形状锁进断言，用户附真实可用 payload 对照现形）——图像生成 `brain draw` 双协议（gemini 原生 `/v1beta/...:generateContent` + OpenAI Images `/v1/images/generations`，带 `-i` 参考图切 `/v1/images/edits` multipart；按模型名推断 + `draw.type` 覆盖）、`draw:` 配置段（model 必填不回退 default_model、base_url/api_key 兜底顶层、智能拼接 `/v1`、`/v1beta` 可写可不写）、`--aspect`/`--res` 统一语义方言翻译、响应归一四形态（b64/url/inlineData/imageUrl）、**自动落盘**（cwd→/tmp）+ stdout 恰一行路径（第 0 节「输出落盘」行的 draw 例外）、**不做自动重试**（按张计费）；draw 配置双引导：`brain config set draw.*` 与 `brain init` 向导可选步骤（覆盖重建保留既有 draw 段，2026-11-03 补——此前 init 重建会静默清空）；live 已过（gemini 原生 1K/2K/参考图编辑三发全绿）、输入装配 XML 区隔（多来源 `<user_message>`/`<attachment id path>`/`<stdin>` 标签、council 发言 `<speech seat round>`、system 数据声明防注入纵深、不可信内容保留字转义）、compare/council stdout 分隔头前双空行、`brain council` 串行辩论（首轮并行盲评+蛇形串行交锋、透镜=上下文（表内须含展开后模型 ID）、模板语言随内容（汉字占比>2%→中文）、缺席退出、沉没成本保护、--order snake/rotate/fixed 发言顺序排布；v0.10.1 轮次短旗标 -C→-r，--rounds 不变）、install.sh 安装模式（`--global`/`--link`；v0.10.3 裸跑自动检测既有形态升级 + SKILL.md 随 Release 包同步，v0.10.5 安装器自身随包原子自更新，v0.10.6 `--uninstall` 反向卸载（幂等/零网络/不动配置与文档）；Windows Git Bash 原生适配：brain.exe 后缀、全局默认 ~/bin、`.gitattributes` 钉 LF）、`--extra-body`/`--extra-headers` 通用透传口（硬保留字拒绝、`-e`/`--max-output-tokens` 快车道优先）、`brain compare` 并行交叉验证（别名=模型组快捷方式、`--blind` 匿名）、CLI 全量双语 zh/en（`BRAIN_LANG`/locale/UTC+8 检测链；README 英文主版 + README.zh-CN.md 互链）；v0.10.2 移除 cobra 默认 completion 命令、命令清单按注册序展示（ask/compare/council/draw 四原语相邻前置）并双语化 help；CUJ.md 关键用户旅程验收表（发版回归底座，不随包分发）；MIT 许可；CI e2e 因网关 IP 风控已降级 continue-on-error；本地 `.env` 存放网关 base_url/api_key 供真实联调，已加入 .gitignore，**永不提交**
-- 架构、配置文件格式、退出码表、超时重试策略等规范全部在 DESIGN.md 内，以它为准
+- **先读 [DESIGN.md](DESIGN.md) 第 0 节「已定决策」**——评审敲定的架构红线，不要重开已定项；当前版本 **v0.13.2 已发布（M0–M13）**，完整行为规范（§1–6）、里程碑演进记录（§7）与开放问题（§8）全部以 [DESIGN.md](DESIGN.md) 为唯一权威台账。
+- **发版回归看 [CUJ.md](CUJ.md)**——关键用户旅程验收表与历史真实事故登记（新增行为类变更须先补/改对应行）。
+- **命令矩阵速览**（按命令树注册序展示，全量中英双语 `BRAIN_LANG`/locale/UTC+8）：
+  - **五大原语**：`ask`（单次咨询 + 别名链故障转移 + SSE/心跳 + XML 多源区隔） · `compare`（同题并发交叉验证 + `--blind`） · `council`（首轮并行盲评 + 蛇形/轮转/固定串行辩论 + `--blind` + 透镜=上下文） · `decide`（System One 类型化判断 `/v1/systemone`，保键序） · `draw`（Gemini 原生 / OpenAI Images 双协议生图，自动落盘，不自动重试）
+  - **配置与运维**：`init`（交互向导，覆盖重建保留既有别名/draw/decide 段） · `config`（`path|get|set|list|edit`） · `models`（按 `base_url` 隔离缓存） · `ping`（连通/鉴权/逐链实弹探测） · `update`（三层发现技能目录 + 委托 `install.sh` + `.old` 回滚保护）
+  - **通用契约**：退出码 `0-7 / 130`；`--json` 成败恒定单对象；`--extra-body` / `--extra-headers` 通用逃生口（保留字保护，快车道 flag 优先）；`--dry-run` 零网络核对请求形状。
+- 本地 `.env` 存放网关凭据供真实联调（CI e2e 因网关 IP 风控设 `continue-on-error`），已加入 `.gitignore`，**永不提交**。
 
 ## 铁律
 
-- **任何密钥不得进入仓库**：config.yaml 含 api_key 与别名（aliases 段），已在 .gitignore 中，整体 0600、永不提交
-- stdout 只输出模型正文；警告/心跳/耗时走 stderr（详见 DESIGN.md 3.2）
-- 修改行为规范前，先确认没有违背 DESIGN.md 第 0 节的已定决策；若要推翻某条决策，先更新第 0 节表格
+- **任何密钥不得进入仓库**：`config.yaml` 含 `api_key` 与 `aliases` 段，已在 `.gitignore` 中，整体 `0600`、永不提交
+- stdout 只输出模型正文（`draw` 例外为单行保存路径，`decide` 为单行 answers JSON）；警告/心跳/耗时一律走 stderr（详见 [DESIGN.md](DESIGN.md) 3.2）
+- 修改行为规范前，先确认没有违背 [DESIGN.md](DESIGN.md) 第 0 节的已定决策；若要推翻某条决策，先更新第 0 节表格
 
 ## 语言与工程约定
 
-- Go，`CGO_ENABLED=0` 静态编译；目标平台：darwin/linux/windows × amd64/arm64
+- Go，`CGO_ENABLED=0` 静态编译；目标平台：`darwin/linux/windows × amd64/arm64`
 - 配置路径用 `os.UserConfigDir()` 解析，不要硬编码 Linux 路径
+- 命令树通过 `newRootCmd()` 按需构造，禁止引入包级可变 flag/options 单例（防止单测跨调用状态污染与 i18n init 期冻结）
 - 文档与代码注释使用中文；commit message 可中英混用，遵循常规动词开头
