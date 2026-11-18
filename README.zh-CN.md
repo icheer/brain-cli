@@ -165,7 +165,7 @@ brain draw -m grok-imagine-image-2.0 --extra-body '{"aspect_ratio":"16:9"}' "...
 >
 > —— 黄仁勋，CNN《Fareed Zakaria GPS》访谈，2025-07-13（[CNN](https://www.cnn.com/2025/07/13/world/video/gps0713-nvidia-us-china-ai) · [报道](https://www.businessinsider.com/ai-will-redefine-jobs-not-replace-them-nvidia-ceo-huang-2025-7)）
 
-同月他在北京链博会接受采访，被问到「是否使用 DeepSeek」时，点名自己几乎同时在跑 OpenAI、Gemini Pro、Claude 与 Perplexity 四个工具，并称多 AI 互证未来会成为一种安全机制——不同的 AI 之间形成冗余、平衡与交叉验证。
+同月他在北京链博会接受采访，被问到「是否使用 DeepSeek」时，点名自己几乎同时在使用 OpenAI、Gemini Pro、Claude 与 Perplexity 四个工具，并称多 AI 互证未来会成为一种安全机制——不同的 AI 之间形成冗余、平衡与交叉验证。
 
 `brain compare`（同题并发互证）与 `brain council`（串行交锋、逐轮互评）正是把这套做法工程化为一条命令——跨厂商接入真正独立的模型，裁决永远由你做。
 
