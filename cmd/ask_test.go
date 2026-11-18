@@ -78,7 +78,11 @@ func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	}
 	t.Setenv("BRAIN_CONFIG", cfgPath)
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
-	for _, k := range []string{"BRAIN_BASE_URL", "BRAIN_API_KEY", "BRAIN_TIMEOUT", "BRAIN_MODELS", "BRAIN_DEFAULT_MODEL"} {
+	for _, k := range []string{
+		"BRAIN_BASE_URL", "BRAIN_API_KEY", "BRAIN_TIMEOUT", "BRAIN_MODELS", "BRAIN_DEFAULT_MODEL", "BRAIN_USER_AGENT",
+		"BRAIN_DRAW_MODEL", "BRAIN_DRAW_BASE_URL", "BRAIN_DRAW_API_KEY", "BRAIN_DRAW_TYPE",
+		"BRAIN_DECIDE_MODEL", "BRAIN_DECIDE_BASE_URL", "BRAIN_DECIDE_API_KEY",
+	} {
 		t.Setenv(k, "")
 	}
 	// cobra 复用同一命令对象，重置上次测试残留的 flag 值
@@ -88,7 +92,8 @@ func setupConfig(t *testing.T, baseURL string, extra ...string) string {
 	drawOpts = drawOptions{aspect: "auto", res: "auto"}     // aspect/res 同理有非零默认值
 	decideOpts = decideOptions{}                            // 同理重置（cobra flag 跨 runBrain 残留）
 	modelsOpts = modelsOptions{}
-	pingOpts = pingOptions{}
+	pingOpts = pingOptions{timeout: 20}
+	updateOpts = updateOptions{}
 	initOpts = struct {
 		baseURL      string
 		defaultModel string
@@ -409,5 +414,19 @@ func TestAskDataTagDeclaration(t *testing.T) {
 	msgs, _ = (*body)["messages"].([]any)
 	if m0, _ := msgs[0].(map[string]any); m0["role"] == "system" {
 		t.Fatalf("问题里的标签字面量不应触发声明 system: %v", m0)
+	}
+
+	// 单管道裸发（无位置参数、无 -f）：正文不包裹 <stdin>，故不应注入标签声明 system
+	askOpts = askOptions{}
+	stdin = strings.NewReader("单管道裸发内容")
+	stdinPiped = true
+	t.Cleanup(func() { stdin = os.Stdin; stdinPiped = false })
+	code, _, _ = runBrain("ask", "-m", "fast")
+	if code != 0 {
+		t.Fatal("code != 0")
+	}
+	msgs, _ = (*body)["messages"].([]any)
+	if m0, _ := msgs[0].(map[string]any); m0["role"] == "system" {
+		t.Fatalf("单管道裸发无标签块，不应注入声明 system: %v", m0)
 	}
 }

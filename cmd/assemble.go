@@ -43,10 +43,10 @@ func assembleMessages(args, files, images, system []string, limit int64) ([]gate
 		parts = append(parts, gateway.ContentPart{Type: "image_url", ImageURL: &gateway.ImageURL{URL: u}})
 	}
 
-	// system：附件/stdin 标签块存在时前置数据声明，再接 -s（以空行连接）。
-	// 判定依据 Assemble 返回的结构标志而非扫描正文——问题里讨论标签字面量不误触发
+	// system：实际产出了 <attachment>/<stdin> 标签块时前置数据声明，再接 -s（以空行连接）。
+	// 判定依据 Assemble 返回的 HasDataTag 而非扫描正文——单管道裸发与问题里的标签字面量均不误触发
 	sysParts := make([]string, 0, 2)
-	if info.HasAttachment || info.HasStdin {
+	if info.HasDataTag {
 		sysParts = append(sysParts, dataTagDeclaration)
 	}
 	if sys := strings.Join(system, "\n\n"); sys != "" {

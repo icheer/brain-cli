@@ -53,9 +53,13 @@ type aliasJSON struct {
 func runModels(cmd *cobra.Command, _ []string) error {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
-	cfg, _, err := config.Load()
+	cfg, warnings, err := config.Load()
 	if err != nil {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%v", err)
+	}
+	applyUserAgent(cfg)
+	for _, w := range warnings {
+		fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("警告:", "warning:"), w)
 	}
 	if cfg.BaseURL == "" || cfg.APIKey == "" {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s", i18n.T("缺少 base_url / api_key，修复：brain config set（brain config path 查看路径）", "missing base_url / api_key; fix with: brain config set (see brain config path)"))

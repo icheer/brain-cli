@@ -378,7 +378,7 @@ func runAsk(cmd *cobra.Command, args []string) (retErr error) {
 		// 模型不可用时给出相近建议（若有缓存可用）；别名与链上模型都作种子
 		var se *gateway.StatusError
 		if errors.As(err, &se) && app.IsModelError(se) {
-			if cands := app.Suggest(append([]string{name}, chain...), cfg.Aliases, app.ReadCachedModels()); len(cands) > 0 {
+			if cands := app.Suggest(append([]string{name}, chain...), cfg.Aliases, app.ReadCachedModels(cfg.BaseURL)); len(cands) > 0 {
 				fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("相近的可用模型:", "similar available models:"), strings.Join(cands, ", "))
 			}
 		}

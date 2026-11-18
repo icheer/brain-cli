@@ -14,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -26,16 +27,17 @@ import (
 )
 
 type drawOptions struct {
-	model        string
-	images       []string
-	aspect       string
-	res          string
-	timeout      int
-	quiet        bool
-	jsonOut      bool
-	dryRun       bool
-	extraBody    []string
-	extraHeaders []string
+	model         string
+	images        []string
+	aspect        string
+	res           string
+	timeout       int
+	maxInputBytes int64
+	quiet         bool
+	jsonOut       bool
+	dryRun        bool
+	extraBody     []string
+	extraHeaders  []string
 }
 
 var drawOpts drawOptions
@@ -123,6 +125,8 @@ func init() {
 		i18n.T("分辨率：auto|1K|2K|4K", "resolution: auto|1K|2K|4K"))
 	drawCmd.Flags().IntVar(&drawOpts.timeout, "timeout", 0,
 		i18n.T("秒数上限（缺省用 timeout_seconds）", "timeout in seconds (defaults to timeout_seconds)"))
+	drawCmd.Flags().Int64Var(&drawOpts.maxInputBytes, "max-input-bytes", 0,
+		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
 	drawCmd.Flags().BoolVarP(&drawOpts.quiet, "quiet", "q", false,
 		i18n.T("关闭心跳/耗时等非必要 stderr（警告与错误保留）", "silence non-essential stderr like heartbeat/timing (warnings and errors stay)"))
 	drawCmd.Flags().BoolVar(&drawOpts.jsonOut, "json", false,
@@ -214,6 +218,9 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 	if drawOpts.timeout > 0 {
 		cfg.TimeoutSeconds = drawOpts.timeout
 	}
+	if drawOpts.maxInputBytes > 0 {
+		cfg.MaxInputBytes = drawOpts.maxInputBytes
+	}
 
 	// ---- 配置装配：draw 段缺省兜底顶层（第 0 节 draw 行） ----
 	baseURL := cfg.Draw.BaseURL
@@ -293,8 +300,21 @@ func runDraw(cmd *cobra.Command, args []string) (retErr error) {
 		promptParts = append(promptParts, strings.Join(args, "\n\n"))
 	}
 	if stdinPiped && stdin != nil {
-		data, _ := io.ReadAll(io.LimitReader(stdin, cfg.MaxInputBytes+1))
+		data, rerr := io.ReadAll(io.LimitReader(stdin, cfg.MaxInputBytes+1))
+		if rerr != nil {
+			return exitcode.Fail(stderr, exitcode.Usage, "%s: %v",
+				i18n.T("读取管道 stdin 失败", "failed to read piped stdin"), rerr)
+		}
+		if int64(len(data)) > cfg.MaxInputBytes {
+			return exitcode.Fail(stderr, exitcode.InputTooLarge, "%s",
+				i18n.Tf("输入 %s 超过上限 %s（--max-input-bytes 可调）",
+					"input %s exceeds limit %s (adjustable via --max-input-bytes)", humanBytes(int64(len(data))), humanBytes(cfg.MaxInputBytes)))
+		}
 		if len(data) > 0 {
+			if !utf8.Valid(data) {
+				return exitcode.Fail(stderr, exitcode.Usage, "%s",
+					i18n.T("管道 stdin 不是 UTF-8 文本（PDF/二进制请先转文本）", "piped stdin is not UTF-8 text (convert PDF/binary first)"))
+			}
 			promptParts = append(promptParts, string(data))
 		}
 	}
@@ -556,11 +576,7 @@ func typLabel(typ string) string {
 	return "openai images"
 }
 
-// truncateLine 压成单行并截断（模型附言/revised_prompt 展示）。
+// truncateLine 压成单行并截断（模型附言/revised_prompt 展示，UTF-8 字符边界安全）。
 func truncateLine(s string, n int) string {
-	s = strings.ReplaceAll(strings.TrimSpace(s), "\n", " ")
-	if len(s) > n {
-		return s[:n] + "…"
-	}
-	return s
+	return gateway.OneLine(s, n)
 }

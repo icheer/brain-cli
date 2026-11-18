@@ -252,3 +252,19 @@ func TestDecideEscapeHatchImageShape(t *testing.T) {
 		t.Fatalf("assets 应经逃生口透传: %v", m["assets"])
 	}
 }
+
+func TestDecideMaxInputBytesFlag(t *testing.T) {
+	srv, _ := fakeDecideGateway(t, 200)
+	setupDecideConfig(t, srv.URL, "jev-latest")
+
+	code, _, errStr := runBrain("decide", "--max-input-bytes", "5", "--noul", "q=x?", "too-long-state")
+	if code != 6 || !strings.Contains(errStr, "--max-input-bytes") {
+		t.Fatalf("超限应 exit 6 且含 --max-input-bytes 提示: code=%d stderr=%s", code, errStr)
+	}
+
+	decideOpts = decideOptions{}
+	code, _, errStr = runBrain("decide", "--max-input-bytes", "64", "--noul", "q=x?", "too-long-state")
+	if code != 0 {
+		t.Fatalf("调大 --max-input-bytes 后应通过: code=%d stderr=%s", code, errStr)
+	}
+}

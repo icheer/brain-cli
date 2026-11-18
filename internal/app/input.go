@@ -33,6 +33,7 @@ func (e *TooLargeError) Error() string {
 type AssembleInfo struct {
 	HasAttachment bool
 	HasStdin      bool
+	HasDataTag    bool // 最终输出实际包含 <attachment> 或 <stdin> 标签块（单管道裸发时为 false）
 }
 
 // structuralTagRe 匹配不可信内容中与结构标签撞车的尖括号形式：`<` 或 `</` 紧跟
@@ -83,9 +84,18 @@ func Assemble(args []string, files []string, stdin io.Reader, piped bool, limit 
 		info.HasAttachment = true
 	}
 	if piped && stdin != nil {
-		// 读到 limit+1 即止，避免恶意管道把内存读爆；最终统一由大小检查裁决
-		data, _ := io.ReadAll(io.LimitReader(stdin, limit+1))
+		// 读到 limit+1 即止，避免恶意管道把内存读爆；校验读取错误、大小与 UTF-8（与 -f 对齐）
+		data, err := io.ReadAll(io.LimitReader(stdin, limit+1))
+		if err != nil {
+			return "", info, &InputError{Msg: i18n.Tf("读取管道 stdin 失败: %v", "failed to read piped stdin: %v", err)}
+		}
+		if int64(len(data)) > limit {
+			return "", info, &TooLargeError{Size: int64(len(data)), Limit: limit}
+		}
 		if len(data) > 0 {
+			if !utf8.Valid(data) {
+				return "", info, &InputError{Msg: i18n.T("管道 stdin 不是 UTF-8 文本（PDF/二进制请先转文本）", "piped stdin is not UTF-8 text (convert PDF/binary first)")}
+			}
 			pipedText = string(data)
 			info.HasStdin = true
 		}
@@ -110,10 +120,12 @@ func Assemble(args []string, files []string, stdin io.Reader, piped bool, limit 
 	for i, a := range attachments {
 		parts = append(parts, fmt.Sprintf("<attachment id=%d path=\"%s\">\n%s\n</attachment>",
 			i+1, xmlAttrEscape(a.path), EscapeStructural(a.content)))
+		info.HasDataTag = true
 	}
 	if pipedText != "" {
 		if blocks >= 2 {
 			parts = append(parts, "<stdin>\n"+EscapeStructural(pipedText)+"\n</stdin>")
+			info.HasDataTag = true
 		} else {
 			parts = append(parts, pipedText) // 单来源裸发：无标签即无边界可保护，零变化
 		}

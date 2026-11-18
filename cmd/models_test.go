@@ -74,3 +74,38 @@ func TestModelsOfflineNoCache(t *testing.T) {
 		t.Fatalf("code=%d stderr=%s", code, errStr)
 	}
 }
+
+// 多网关切换（CUJ J8）：切换 base_url 后缓存按网关隔离，不返回旧网关模型且各自保留缓存。
+func TestModelsMultiGatewayCacheIsolation(t *testing.T) {
+	var hitsA, hitsB int
+	srvA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hitsA++
+		_, _ = w.Write([]byte(`{"data":[{"id":"gw-a-model"}]}`))
+	}))
+	t.Cleanup(srvA.Close)
+	srvB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hitsB++
+		_, _ = w.Write([]byte(`{"data":[{"id":"gw-b-model"}]}`))
+	}))
+	t.Cleanup(srvB.Close)
+
+	setupConfig(t, srvA.URL+"/v1")
+	code, outA, _ := runBrain("models")
+	if code != 0 || !strings.Contains(outA, "gw-a-model") || hitsA != 1 {
+		t.Fatalf("网关 A 首拉失败: code=%d hitsA=%d out=%s", code, hitsA, outA)
+	}
+
+	// 切换到网关 B：不得命中网关 A 的缓存
+	t.Setenv("BRAIN_BASE_URL", srvB.URL+"/v1")
+	code, outB, _ := runBrain("models")
+	if code != 0 || !strings.Contains(outB, "gw-b-model") || strings.Contains(outB, "gw-a-model") || hitsB != 1 {
+		t.Fatalf("网关 B 串台到了 A 的缓存: code=%d hitsB=%d out=%s", code, hitsB, outB)
+	}
+
+	// 切回网关 A：A 的缓存仍在有效期内，无需再次请求远端
+	t.Setenv("BRAIN_BASE_URL", srvA.URL+"/v1")
+	code, outA2, errA2 := runBrain("models")
+	if code != 0 || !strings.Contains(outA2, "gw-a-model") || !strings.Contains(errA2, "本地缓存") || hitsA != 1 {
+		t.Fatalf("切回网关 A 应命中其独立缓存: code=%d hitsA=%d stderr=%s", code, hitsA, errA2)
+	}
+}

@@ -240,6 +240,7 @@ func initAliases(ctx context.Context, in *bufio.Reader, stdout, stderr io.Writer
 	}
 
 	var list []string
+	applyUserAgent(*cfg)
 	g := gateway.New(cfg.BaseURL, cfg.APIKey, 10*time.Second)
 	if l, err := g.ListModels(ctx); err != nil {
 		fmt.Fprintf(stdout, "%s\n", i18n.Tf("网关模型清单不可达（%v）：可直接粘贴完整模型 ID", "gateway model listing unreachable (%v): paste full model IDs instead", err))

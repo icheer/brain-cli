@@ -191,7 +191,23 @@ func TestAssembleInfoStructural(t *testing.T) {
 		t.Fatalf("问题里的标签字面量不该触发结构标志: %+v, %v", info, err)
 	}
 	_, info, err = Assemble([]string{"q"}, nil, strings.NewReader("管道"), true, 1<<20)
-	if err != nil || !info.HasStdin || info.HasAttachment {
-		t.Fatalf("管道应计 HasStdin: %+v, %v", info, err)
+	if err != nil || !info.HasStdin || info.HasAttachment || !info.HasDataTag {
+		t.Fatalf("多来源管道应计 HasStdin 与 HasDataTag: %+v, %v", info, err)
+	}
+	// 单一管道来源裸发：不包 <stdin> 标签，故 HasDataTag 必须为 false（不注入无意义的标签声明）
+	_, info, err = Assemble(nil, nil, strings.NewReader("纯管道"), true, 1<<20)
+	if err != nil || !info.HasStdin || info.HasDataTag {
+		t.Fatalf("单管道裸发时 HasDataTag 应为 false: %+v, %v", info, err)
+	}
+}
+
+func TestAssembleStdinInvalidUTF8AndTooLarge(t *testing.T) {
+	_, _, err := Assemble([]string{"q"}, nil, bytes.NewReader([]byte{0xff, 0xfe, 0x00}), true, 1<<20)
+	if _, ok := err.(*InputError); !ok {
+		t.Fatalf("非 UTF-8 管道输入应得 InputError，得到 %v", err)
+	}
+	_, _, err = Assemble(nil, nil, strings.NewReader(strings.Repeat("a", 50)), true, 10)
+	if _, ok := err.(*TooLargeError); !ok {
+		t.Fatalf("超限管道输入应得 TooLargeError，得到 %v", err)
 	}
 }

@@ -533,3 +533,30 @@ func TestDrawDryRunShowsExtras(t *testing.T) {
 		t.Errorf("dry-run 应展示 extras: %s", out)
 	}
 }
+
+func TestDrawMaxInputBytesAndStdinUTF8(t *testing.T) {
+	srv := fakeDrawGateway(t, 0)
+	setupDrawConfig(t, srv.URL, "gpt-image-x", "openai")
+	t.Chdir(t.TempDir())
+
+	code, _, errStr := runBrain("draw", "--max-input-bytes", "4", "a very long prompt")
+	if code != 6 || !strings.Contains(errStr, "--max-input-bytes") {
+		t.Fatalf("draw 超限应 exit 6: code=%d stderr=%s", code, errStr)
+	}
+
+	drawOpts = drawOptions{aspect: "auto", res: "auto"}
+	code, _, errStr = runBrain("draw", "--max-input-bytes", "64", "a very long prompt")
+	if code != 0 {
+		t.Fatalf("draw 调大 --max-input-bytes 应成功: code=%d stderr=%s", code, errStr)
+	}
+
+	// 管道传入非 UTF-8 二进制应 exit 1 拒绝
+	drawOpts = drawOptions{aspect: "auto", res: "auto"}
+	stdin = strings.NewReader(string([]byte{0xff, 0xfe, 0x00}))
+	stdinPiped = true
+	t.Cleanup(func() { stdin = os.Stdin; stdinPiped = false })
+	code, _, errStr = runBrain("draw")
+	if code != 1 || !strings.Contains(errStr, "UTF-8") {
+		t.Fatalf("draw 管道非 UTF-8 应 exit 1: code=%d stderr=%s", code, errStr)
+	}
+}

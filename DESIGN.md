@@ -167,13 +167,13 @@ aliases:
 
 ### 3.7 update（自升级，M13）
 - [x] 发现链三层：`--skill-dir` 显式（须含 install.sh）→ 实路径（EvalSymlinks 解全局软链）向上 ≤3 级找 SKILL.md+install.sh → 候选表 `~/.claude|.codex|.agents/skills/brain`；stdout 报告发现位置
-- [x] 版本比对（GitHub releases/latest，429/5xx/网错重试 ≤3）；`--check` 零下载；已是最新 exit 0
-- [x] 委托：实路径自改名 `.old` → 同步 `bash <skill>/install.sh`（继承 stdio，sudo 密码可输入）→ 转发其退出码 → 失败且原位无新文件则回滚改名 → 清 `.old`（Unix 立即删 / Windows cmd 延迟删 + 下次启动兜底清）
-- [x] 双副本（Git Bash 复制形态）由 install.sh 无参形态检测顺带处理，Go 侧零布局知识
+- [x] 版本比对（GitHub releases/latest，429/5xx/网错重试 ≤3）；`--check` 零下载；`cur >= latest` 已是最新 exit 0（防本地预发布版反向降级）
+- [x] 委托：实路径自改名 `.old`（SIGINT/SIGTERM 信号保护）→ 同步 `bash <skill>/install.sh`（继承 stdio，sudo 密码可输入；全局/Windows 双副本形态前置传参兜底旧安装器）→ 转发其退出码 → 失败/中断或原位未产出新文件均将 `.old` 回滚复位（防 go install 等无关路径二进制被误删）→ 原位已更新则清 `.old`（Unix 立即删 / Windows cmd 延迟删 + 下次启动兜底清）
+- [x] 双副本（Git Bash 复制形态）与全局副本由 install.sh 形态检测（含 `.old` 识别）处理；SHA256 校验 Fail-Closed 且兼容 `sha256sum` / `shasum -a 256` / `openssl`
 
 ## 4. 模型解析与故障转移
 - [x] `-m` 解析顺序：config.yaml 别名（取 fallback 链首位）→ 视为字面模型 ID → 报错并列出相近可用模型
-- [x] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级用缓存并 stderr 提示）
+- [x] `brain models`：合并展示本地别名（含场景标注）+ `/v1/models` 实际可用列表；远端结果按归一 `base_url` 隔离缓存于用户缓存目录（TTL 默认 24h，`--refresh` 强制拉取；离线降级仅用同网关缓存并 stderr 提示）
 - [x] Fallback 规则：仅在**尚未输出任何正文内容**前允许切换（一次性输出天然满足）；切换/重试均 stderr 提示；`--json` 的 model 字段记录最终使用的模型
 - [x] `brain ping`：自检连通性 / 鉴权 / 默认模型可用性（SKILL.md 引导 Agent 第一步先跑它）
 - [x] 无 `default_model` 且未传 `-m` → exit 7 + 修复提示

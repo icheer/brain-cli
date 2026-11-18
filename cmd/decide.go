@@ -22,16 +22,17 @@ import (
 )
 
 type decideOptions struct {
-	model        string
-	questions    []string // -Q <json|@file>，可重复有序合并
-	nouls        []string // --noul <id>=<指令>，可重复速记
-	files        []string // -f：state 附件（ask 同款 XML 组装）
-	timeout      int
-	quiet        bool
-	jsonOut      bool
-	dryRun       bool
-	extraBody    []string
-	extraHeaders []string
+	model         string
+	questions     []string // -Q <json|@file>，可重复有序合并
+	nouls         []string // --noul <id>=<指令>，可重复速记
+	files         []string // -f：state 附件（ask 同款 XML 组装）
+	timeout       int
+	maxInputBytes int64
+	quiet         bool
+	jsonOut       bool
+	dryRun        bool
+	extraBody     []string
+	extraHeaders  []string
 }
 
 var decideOpts decideOptions
@@ -114,6 +115,8 @@ func init() {
 			"state attachments (repeatable; assembled into <attachment> XML like ask)"))
 	decideCmd.Flags().IntVar(&decideOpts.timeout, "timeout", 0,
 		i18n.T("秒数上限（缺省用 timeout_seconds）", "timeout in seconds (defaults to timeout_seconds)"))
+	decideCmd.Flags().Int64Var(&decideOpts.maxInputBytes, "max-input-bytes", 0,
+		i18n.T("输入文本上限字节数（覆盖 config）", "input text size limit in bytes (overrides config)"))
 	decideCmd.Flags().BoolVarP(&decideOpts.quiet, "quiet", "q", false,
 		i18n.T("关闭计时行等非必要 stderr（警告与错误保留）", "silence non-essential stderr like the timing line (warnings and errors stay)"))
 	decideCmd.Flags().BoolVar(&decideOpts.jsonOut, "json", false,
@@ -188,6 +191,9 @@ func runDecide(cmd *cobra.Command, args []string) (retErr error) {
 	}
 	if decideOpts.timeout > 0 {
 		cfg.TimeoutSeconds = decideOpts.timeout
+	}
+	if decideOpts.maxInputBytes > 0 {
+		cfg.MaxInputBytes = decideOpts.maxInputBytes
 	}
 
 	// ---- 配置装配：decide 段缺省兜底顶层（第 0 节 decide 行；单方言无 type） ----

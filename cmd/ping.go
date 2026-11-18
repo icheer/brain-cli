@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -102,9 +101,13 @@ func runPing(cmd *cobra.Command, _ []string) (retErr error) {
 		}
 	}()
 
-	cfg, _, err := config.Load()
+	cfg, warnings, err := config.Load()
 	if err != nil {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%v", err)
+	}
+	applyUserAgent(cfg)
+	for _, w := range warnings {
+		fmt.Fprintf(stderr, "brain: %s %s\n", i18n.T("警告:", "warning:"), w)
 	}
 	if cfg.BaseURL == "" || cfg.APIKey == "" {
 		return exitcode.Fail(stderr, exitcode.ConfigMissing, "%s", i18n.T("缺少 base_url / api_key，修复：brain config set（brain config path 查看路径）", "missing base_url / api_key; fix with: brain config set (see brain config path)"))
@@ -227,11 +230,7 @@ func humanMillis(ms int64) string {
 	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }
 
-// oneLine 压成单行并截断（探测失败原因展示用；网关错误体可达数百字符）。
+// oneLine 压成单行并截断（探测失败原因展示用；UTF-8 字符边界安全）。
 func oneLine(s string, n int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) > n {
-		return s[:n] + "…"
-	}
-	return s
+	return gateway.OneLine(s, n)
 }
