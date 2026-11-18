@@ -1,6 +1,6 @@
 ---
 name: brain
-description: 大模型网关外脑：咨询、决策与生图工具。当需要复杂推理的交叉验证、第二意见的代码审查、视觉/图表/截图解析、陷入死循环需要破局咨询、或需要对一段材料做批量廉价的结构化分类/评分（是/否、单选、打分）、需要生成/编辑图片时使用。简单事实查询、Agent 自己能完成的任务、连续高频调用不要使用（每次调用都产生费用）。
+description: "大模型网关外脑 CLI（Cross-vendor LLM side-brain: ask / compare / council / decide / draw）。当需要跨厂商独立第二意见、复杂推理交叉验证、高风险代码/架构审查、图表截图视觉解析、陷入死循环破局、多模型并行比对（compare）或串行交锋辩论（council）、未读材料廉价类型化分类评分（decide：是/否、单选、打分）、或文生图/参考图改图（draw）时调用。Use for independent cross-model verification, code/design review, multi-model debate, fast typed triage/scoring, or image generation/editing. 简单事实查询、宿主自身能直接完成的常规读写/编码任务、短时间连续高频调用不要使用（每次调用均产生网关费用）。"
 ---
 
 # brain — 外脑咨询
@@ -9,11 +9,11 @@ description: 大模型网关外脑：咨询、决策与生图工具。当需要�
 
 ## 第 0 步：安装（仅首次）
 
-技能目录不带二进制（Go + TLS 下限约 6.4MB，按需下载更合适）。若 `brain` 不在 PATH：
+技能目录不带二进制（Go + TLS 下限约 6.4MB，按需下载更合适）。若 `brain` 不在 PATH，在**本技能目录**（即本 `SKILL.md` 所在目录，如 `~/.claude/skills/brain` 或 `.agents/skills/brain`）运行：
 
 ```bash
-bash "$(dirname "$SKILL_DIR")/install.sh"   # 或仓库 skills/brain/install.sh
-# 人类终端场景可加：--link（技能目录安装+全局软链，重装即全局升级）或 --global（仅全局安装）
+bash ~/.claude/skills/brain/install.sh --link   # 或实际技能目录路径（如 .agents/skills/brain/install.sh）
+# --link 在技能目录 bin/ 安装二进制并软链到全局目录（重装即全局升级）；也可只装技能目录（不带参数）或 --global
 ```
 
 Windows 宿主在 Git Bash（Claude Code 的 Windows shell 自带）或 WSL 下运行同一脚本；安装器按平台自动装 `brain.exe`（Git Bash 下全局默认 `~/bin`）。
@@ -29,12 +29,14 @@ Windows 宿主在 Git Bash（Claude Code 的 Windows shell 自带）或 WSL 下�
 - **拓扑**：第 1 轮并行盲评（席位互不可见，消灭锚定），第 2 轮起串行交锋（默认蛇形=偶数轮反转，`--order rotate` 轮转/`fixed` 恒正序可改），末轮自动收尾（各方最终立场/观点变化/未解分歧）。stdout 按 `===== model: X | round r =====` 时间序拼接，裁决与综合留给宿主（共鸣点/断层线归纳，见工程注意）。
 - **2 席特例**：蛇形对 2 席即「逐轮互换先发」——收尾红利轮流坐庄（R=2 时首位席位收尾；R≥3 时逐轮轮换），避免某个模型每轮都拿最后发言权；代价是轮边界处收尾者连开下轮。要固定「先 A 后 B」的提问-应答位次（A 提、B 驳的稳定角色分工）用 `--order fixed`，此时注意 B 每轮收尾、裁决时自我校正近因偏差。
 - **量级护栏**：总调用 = 席位 × 轮次，费用超线性（第 r 轮输入含 (r-1)×N 次已积累发言）。**轮次默认 2（盲评+收尾）通常已够**，需要增量交锋才上 3，>3 罕见；席位 2-4 个常用。发起前先算这个乘积，并按 轮次×`--timeout` 量级给宿主 Bash 超时。
-- **透镜**：席位-透镜表写进 `-s`（无专用语法）；每个模型发言时会被告知自己的席位名（`-m` 展开后的完整模型 ID），它按名字认领表中对应行。**硬要求只有一条：表里必须写展开后的模型 ID**（写别名则认领失败、静默退化为裸模型辩论）。
+- **透镜**：席位-透镜表写进 `-s`（无专用语法）；每个模型发言时会被告知自己的席位名（普通模式为 `-m` 展开后的完整模型 ID，`--blind` 模式为 `Model_A/B/…`），它按名字认领表中对应行。**注意：普通模式下表里必须写展开后的模型 ID**（误写别名会触发 stderr 告警且透镜不生效；若不想查询别名展开结果，可加 `--blind` 直接写 `Model_A=...；Model_B=...`，同时消除辩手互评与你裁决时的厂牌偏见）。
 - **失败语义**：席位只做同模型重试、无跨模型故障转移（中途换人=身份造假）；重试仍败记缺席并退出后续轮次（缺席在发言记录/stderr/`--json` 明示）；有效席位 <2 提前终止但已积累发言照常输出（exit 0）；SIGINT 同样输出已积累发言并以 130 退出。
 
 ## 第 1 步：自检
 
 ```bash
+# 若首次安装未加 --link / --global，先把技能目录 bin 加入当前会话 PATH：
+command -v brain >/dev/null 2>&1 || export PATH="$HOME/.claude/skills/brain/bin:$HOME/.codex/skills/brain/bin:$HOME/.agents/skills/brain/bin:$PATH"
 brain ping    # 连通性 / 鉴权 / 默认模型 三项自检
 brain ping -m reason   # 可选：逐模型探测别名链实际可用性（/v1/models 列出≠本 key 可用）
 ```
@@ -92,10 +94,9 @@ brain council -m reason -m coding -f design.md "评审这份设计的并发与�
 brain council -m reason -r 3 -f design.md "深挖这份架构决策的分歧"              # -r 3 在盲评与收尾之间加一轮增量交锋
 brain council -m reason --json "讨论" | jq -r '.transcript[] | select(.ok) | .content'
 
-# 立场/视角（透镜）：席位-透镜表写进 -s；每次发言会告知模型自己的席位名（-m 展开后的
-# 完整模型 ID），模型按名字认领表中对应行。硬要求只有一条：表里必须用展开后的模型 ID
-# （写别名则席位认领不到，静默退化为裸模型辩论）；其余格式自由
+# 立场/视角（透镜）：席位-透镜表写进 -s；普通模式用展开后的模型 ID，--blind 匿名模式直接用 Model_A/B
 brain council -m m-a -m m-b -f design.md -s "席位-透镜表：m-a 从安全与边界防御视角；m-b 从性能与快速交付视角" "评审这份设计"
+brain council -m reason --blind -f design.md -s "席位-透镜表：Model_A=安全与故障隔离；Model_B=性能与交付速度" "评审这份设计"
 
 # 任意请求参数透传（temperature/top_k/response_format/厂商私有字段…）
 brain ask -m reason --extra-body '{"temperature":0.3,"top_k":50}' "推演"

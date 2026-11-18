@@ -2,7 +2,7 @@
 config.yaml
 config.yml
 
-# Go
+# Go 与构建产物
 *.exe
 *.exe~
 *.dll
@@ -14,11 +14,11 @@ dist/
 bin/
 /brain
 
+# 生图默认落盘产物（防仓库内测试时误提交）
+brain-draw-*
+
 # 技能目录里 install.sh 下载的二进制
 skills/brain/bin/
-
-# goreleaser
-dist/
 
 # 编辑器/系统
 .DS_Store
